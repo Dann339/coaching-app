@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clients — CoachPlan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header id="menu"></header>
+
+  <main>
+    <div class="entete">
+      <div>
+        <h1>Clients</h1>
+        <p class="sous-titre" id="resume"></p>
+      </div>
+      <div class="barre-outils">
+        <input type="search" id="recherche" class="recherche" placeholder="Chercher un client" aria-label="Chercher un client">
+        <button class="principal" id="btn-ajouter">Ajouter un client</button>
+      </div>
+    </div>
+
+    <div class="liste" id="liste-clients"></div>
+
+    <p class="meta" style="margin-top:32px">
+      Pour l'instant, les données sont gardées dans ce navigateur seulement.
+      <button class="petit danger" id="btn-reinitialiser">Tout effacer</button>
+    </p>
+  </main>
+
+  <!-- Fenêtre pour ajouter / modifier un client -->
+  <dialog id="fenetre-client">
+    <form method="dialog" id="form-client">
+      <h2 id="titre-fenetre">Nouveau client</h2>
+      <label>Nom <input name="nom" required></label>
+      <label>Courriel <input name="courriel" type="email"></label>
+      <label>Objectifs <textarea name="objectifs"></textarea></label>
+      <label>Notes <textarea name="notes"></textarea></label>
+      <div class="grille-2">
+        <label>Date de début <input name="debut" type="date"></label>
+        <label>Poids actuel (lb) <input name="poids" type="number" min="0" step="0.1"></label>
+      </div>
+      <label>Plan nutritionnel
+        <select name="plan" id="choix-plan"></select>
+      </label>
+      <p class="meta" id="info-plan" style="margin-top:-6px"></p>
+      <div class="pied">
+        <button type="button" class="danger" id="btn-archiver">Archiver</button>
+        <span class="actions">
+          <button type="button" value="annuler" id="btn-annuler">Annuler</button>
+          <button type="submit" class="principal">Enregistrer</button>
+        </span>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="js/donnees-depart.js"></script>
+  <script src="js/stockage.js"></script>
+  <script src="js/commun.js"></script>
+  <script>
+    afficherMenu("clients");
+
+    const fenetre = document.getElementById("fenetre-client");
+    const form = document.getElementById("form-client");
+    let clientEnEdition = null;
+
+    function afficherClients() {
+      const recherche = document.getElementById("recherche").value.toLowerCase();
+      const actifs = db.clients.filter(c => c.actif !== false && c.nom.toLowerCase().includes(recherche));
+      document.getElementById("resume").textContent =
+        `${db.clients.filter(c => c.actif !== false).length} clients actifs`;
+
+      const liste = document.getElementById("liste-clients");
+      if (!actifs.length) {
+        liste.innerHTML = `<div class="vide">Aucun client. Clique sur « Ajouter un client » pour commencer.</div>`;
+        return;
+      }
+      liste.innerHTML = actifs.map(c => {
+        const seances = seancesDuClient(c.id);
+        const prog = programmeDuClient(c.id);
+        const plan = planNutritionDuClient(c.id);
+        const derniere = seances[0] ? dateLisible(seances[0].date) : "aucune";
+        return `
+        <article class="carte carte-client">
+          <div>
+            <h2>${txt(c.nom)}</h2>
+            <p class="meta">${txt(c.objectifs || "Aucun objectif noté")}</p>
+            <p class="meta">${prog ? txt(prog.nom) + ", " + prog.entrainements.length + " entraînements" : "Pas encore de programme"}
+              · ${seances.length} séances · dernière : ${derniere}</p>
+            <p class="meta">Nutrition : ${plan ? `<a href="nutrition.html?plan=${plan.id}">${txt(plan.nom)}</a>` : "aucun plan"}</p>
+          </div>
+          <div class="actions">
+            <a class="bouton" href="programme.html?client=${c.id}">Programme</a>
+            <a class="bouton principal" href="seance.html?client=${c.id}">Nouvelle séance</a>
+            <a class="bouton" href="progression.html?client=${c.id}">Progression</a>
+            <a class="bouton" href="nutrition.html?client=${c.id}">Nutrition</a>
+            <button data-lien="${c.id}">Copier le lien client</button>
+            <button class="icone" data-modifier="${c.id}" aria-label="Modifier ${txt(c.nom)}">✎</button>
+          </div>
+        </article>`;
+      }).join("");
+    }
+
+    function ouvrirFenetre(client) {
+      clientEnEdition = client;
+      form.reset();
+      document.getElementById("titre-fenetre").textContent = client ? "Modifier le client" : "Nouveau client";
+      document.getElementById("btn-archiver").hidden = !client;
+      if (client) for (const champ of ["nom", "courriel", "objectifs", "notes", "debut", "poids"]) form[champ].value = client[champ] || "";
+      else form.debut.value = aujourdhui();
+
+      // Choix du plan nutritionnel lié à ce client
+      const actuel = client ? planNutritionDuClient(client.id) : null;
+      const modeles = db.plansNutrition.filter(p => !client || p.clientId !== client.id);
+      document.getElementById("choix-plan").innerHTML = `
+        ${actuel ? `<option value="">Garder « ${txt(actuel.nom)} »</option>` : ""}
+        <option value="nouveau">Créer un nouveau plan</option>
+        ${modeles.length ? `<optgroup label="Partir d'un plan existant">
+          ${modeles.map(p => `<option value="copie:${p.id}">${txt(p.nom)} (${txt(trouverClient(p.clientId)?.nom || "sans client")})</option>`).join("")}
+        </optgroup>` : ""}
+        ${actuel ? "" : `<option value="">Plus tard</option>`}`;
+      // Nouveau client : « Créer un nouveau plan » par défaut. Client existant : ne rien changer.
+      document.getElementById("choix-plan").value = client ? "" : "nouveau";
+      document.getElementById("info-plan").textContent = actuel
+        ? "Choisir un autre plan crée un nouveau plan ; l'ancien reste dans l'historique."
+        : "Après l'enregistrement, le plan s'ouvre avec ce client déjà choisi.";
+      fenetre.showModal();
+    }
+
+    form.addEventListener("submit", () => {
+      const { plan: choixPlan, ...valeurs } = Object.fromEntries(new FormData(form));
+      valeurs.poids = Number(valeurs.poids) || null;
+      let client = clientEnEdition;
+      if (client) Object.assign(client, valeurs);
+      else {
+        client = { id: Donnees.nouvelId("c"), ...valeurs, code: Donnees.nouveauCode(), actif: true };
+        db.clients.push(client);
+      }
+      enregistrer();
+
+      // Lier un plan nutritionnel au client
+      if (choixPlan === "nouveau") {
+        location.href = `nutrition.html?client=${client.id}&nouveau=1`;
+        return;
+      }
+      if (choixPlan?.startsWith("copie:")) {
+        const modele = db.plansNutrition.find(p => p.id === choixPlan.slice(6));
+        const copie = JSON.parse(JSON.stringify(modele));
+        Object.assign(copie, { id: Donnees.nouvelId("n"), clientId: client.id, debut: aujourdhui(),
+          poids: client.poids || copie.poids });
+        db.plansNutrition.push(copie);
+        enregistrer();
+        location.href = `nutrition.html?plan=${copie.id}`;
+        return;
+      }
+      afficherClients();
+      message(clientEnEdition ? "Client modifié" : "Client ajouté");
+    });
+
+    document.getElementById("btn-annuler").onclick = () => fenetre.close();
+    document.getElementById("btn-archiver").onclick = () => {
+      if (!confirm("Archiver ce client ? Son historique est conservé.")) return;
+      clientEnEdition.actif = false;
+      enregistrer(); fenetre.close(); afficherClients();
+      message("Client archivé");
+    };
+    document.getElementById("btn-ajouter").onclick = () => ouvrirFenetre(null);
+    document.getElementById("recherche").oninput = afficherClients;
+
+    document.getElementById("liste-clients").addEventListener("click", async e => {
+      const modifier = e.target.closest("[data-modifier]");
+      if (modifier) ouvrirFenetre(trouverClient(modifier.dataset.modifier));
+      const lien = e.target.closest("[data-lien]");
+      if (lien) {
+        const client = trouverClient(lien.dataset.lien);
+        const url = new URL("client.html?code=" + client.code, location.href).href;
+        try { await navigator.clipboard.writeText(url); message("Lien copié"); }
+        catch { prompt("Copie ce lien :", url); }
+      }
+    });
+
+    document.getElementById("btn-reinitialiser").onclick = () => {
+      if (!confirm("Effacer tous les clients, programmes, séances et recettes ? La bibliothèque d'exercices revient à celle de départ.")) return;
+      db = Donnees.reinitialiser();
+      afficherClients();
+      message("Tout est effacé");
+    };
+
+    afficherClients();
+  </script>
+</body>
+</html>

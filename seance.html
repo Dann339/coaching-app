@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Séance — CoachPlan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header id="menu"></header>
+
+  <main>
+    <div class="entete">
+      <div>
+        <h1>Nouvelle séance</h1>
+        <p class="sous-titre">Inscris le poids (lb) et les reps de chaque série.</p>
+      </div>
+      <div class="barre-outils">
+        <span id="choix-client"></span>
+        <label class="champ-inline">Entraînement <select id="select-entrainement"></select></label>
+        <label class="champ-inline">Date <input type="date" id="date-seance" style="width:auto"></label>
+      </div>
+    </div>
+
+    <div id="zone-seance"></div>
+
+    <h2 style="margin-top:32px">Séances récentes</h2>
+    <div class="carte tableau-defile"><table class="donnees" id="recentes"></table></div>
+  </main>
+
+  <script src="js/donnees-depart.js"></script>
+  <script src="js/stockage.js"></script>
+  <script src="js/commun.js"></script>
+  <script>
+    afficherMenu("seance");
+
+    let clientId = clientCourant();
+    const zone = document.getElementById("zone-seance");
+    const selectEntrainement = document.getElementById("select-entrainement");
+    document.getElementById("date-seance").value = aujourdhui();
+
+    // Les séries de la dernière séance où ce client a fait cet exercice
+    function dernieresSeries(exerciceId) {
+      for (const s of seancesDuClient(clientId)) {
+        const x = s.exercices.find(x => x.exerciceId === exerciceId);
+        if (x && x.series.length) return x.series;
+      }
+      return [];
+    }
+
+    function remplirEntrainements() {
+      const prog = programmeDuClient(clientId);
+      selectEntrainement.innerHTML = prog
+        ? prog.entrainements.map((w, i) => `<option value="${i}">${txt(w.nom)}</option>`).join("")
+        : `<option value="">Aucun programme</option>`;
+      // Proposer l'entraînement qui suit le dernier fait
+      if (prog) {
+        const derniere = seancesDuClient(clientId)[0];
+        const index = derniere ? prog.entrainements.findIndex(w => w.nom === derniere.entrainement) : -1;
+        selectEntrainement.value = String((index + 1) % prog.entrainements.length);
+      }
+    }
+
+    function ligneSerie(n, precedent) {
+      return `<tr>
+        <td>${n}</td>
+        <td><input type="number" inputmode="decimal" step="0.5" min="0" data-champ="poids" aria-label="Poids série ${n}"></td>
+        <td><input type="number" inputmode="numeric" step="1" min="0" data-champ="reps" aria-label="Reps série ${n}"></td>
+        <td class="precedent">${precedent ? `${precedent.poids != null ? nombre(precedent.poids) : "—"} × ${precedent.reps ?? "—"}` : ""}</td>
+      </tr>`;
+    }
+
+    function afficher() {
+      const prog = programmeDuClient(clientId);
+      if (!prog) {
+        zone.innerHTML = `<div class="vide">Ce client n'a pas de programme. <a href="programme.html?client=${clientId}">Créer son programme</a></div>`;
+        afficherRecentes(); return;
+      }
+      const w = prog.entrainements[selectEntrainement.value];
+      zone.innerHTML = w.exercices.map((x, i) => {
+        const ex = trouverExercice(x.exerciceId);
+        if (!ex) return "";
+        const nbSeries = parseInt(x.series) || 3;
+        const avant = dernieresSeries(ex.id);
+        return `
+        <section class="carte ex-seance" data-i="${i}" data-ex="${ex.id}">
+          <div class="ex-seance-tete">
+            ${ex.image ? `<img src="${txt(ex.image)}" alt="">` : ""}
+            <div style="flex:1">
+              <h3 style="margin:0">${txt(ex.nom)}</h3>
+              <div class="cible">${txt(x.series)} × ${txt(x.reps)}</div>
+                ${detailsExercice(x)}
+              ${x.consignes ? `<p class="consigne">${txt(x.consignes)}</p>` : ""}
+            </div>
+            ${ex.video ? `<a class="bouton petit" href="${txt(ex.video)}" target="_blank" rel="noopener">Vidéo</a>` : ""}
+          </div>
+          <table class="series">
+            <thead><tr><th>Série</th><th>Poids (lb)</th><th>Reps</th><th>Dernière fois</th></tr></thead>
+            <tbody>${Array.from({ length: nbSeries }, (_, k) => ligneSerie(k + 1, avant[k])).join("")}</tbody>
+          </table>
+          <button class="petit" data-action="ajouter-serie" style="margin-top:6px">Ajouter une série</button>
+        </section>`;
+      }).join("") + `
+        <section class="carte ex-seance">
+          <h3>Cardio</h3>
+          <table class="series" id="cardio">
+            <thead><tr><th></th><th>Activité</th><th>Minutes</th></tr></thead>
+            <tbody>${[1, 2, 3].map(n => `<tr><td>${n}</td>
+              <td><input data-champ="activite" placeholder="Tapis roulant, escalier…" aria-label="Activité ${n}" style="max-width:none"></td>
+              <td><input type="number" inputmode="numeric" min="0" data-champ="minutes" aria-label="Minutes ${n}"></td></tr>`).join("")}
+            </tbody>
+          </table>
+          <label style="margin-top:12px">Notes de séance <textarea id="notes" placeholder="Énergie, douleur, ajustements…"></textarea></label>
+        </section>
+        <div class="barre-collante">
+          <button class="principal" id="btn-enregistrer">Enregistrer la séance</button>
+        </div>`;
+
+      document.getElementById("btn-enregistrer").onclick = enregistrerSeance;
+      afficherRecentes();
+    }
+
+    zone.addEventListener("click", e => {
+      if (e.target.dataset.action !== "ajouter-serie") return;
+      const tbody = e.target.closest("section").querySelector("tbody");
+      tbody.insertAdjacentHTML("beforeend", ligneSerie(tbody.rows.length + 1));
+    });
+
+    function enregistrerSeance() {
+      const prog = programmeDuClient(clientId);
+      const w = prog.entrainements[selectEntrainement.value];
+      const exercices = [...zone.querySelectorAll("[data-ex]")].map(section => {
+        const series = [...section.querySelectorAll("tbody tr")].map(tr => {
+          const poids = tr.querySelector('[data-champ="poids"]').value;
+          const reps = tr.querySelector('[data-champ="reps"]').value;
+          return { poids: poids === "" ? null : Number(poids), reps: reps === "" ? null : Number(reps) };
+        }).filter(s => s.poids !== null || s.reps !== null);
+        return { exerciceId: section.dataset.ex, series };
+      }).filter(x => x.series.length);
+      const cardio = [...document.querySelectorAll("#cardio tbody tr")].map(tr => ({
+        activite: tr.querySelector('[data-champ="activite"]').value.trim(),
+        minutes: Number(tr.querySelector('[data-champ="minutes"]').value) || 0,
+      })).filter(c => c.activite || c.minutes);
+
+      if (!exercices.length && !cardio.length) { message("Rien à enregistrer : inscris au moins une série"); return; }
+
+      db.seances.push({
+        id: Donnees.nouvelId("s"), clientId,
+        date: document.getElementById("date-seance").value || aujourdhui(),
+        entrainement: w.nom, exercices, cardio,
+        notes: document.getElementById("notes").value,
+      });
+      enregistrer();
+      message("Séance enregistrée");
+      window.scrollTo({ top: 0 });
+      afficher();
+    }
+
+    function afficherRecentes() {
+      const seances = seancesDuClient(clientId).slice(0, 8);
+      document.getElementById("recentes").innerHTML = seances.length ? `
+        <thead><tr><th>Date</th><th>Entraînement</th><th>Exercices</th><th>Cardio (min)</th><th>Volume (lb)</th><th></th></tr></thead>
+        <tbody>${seances.map(s => `<tr>
+          <td>${dateLisible(s.date)}</td><td>${txt(s.entrainement)}</td><td>${s.exercices.length}</td>
+          <td>${s.cardio.reduce((t, c) => t + (Number(c.minutes) || 0), 0)}</td>
+          <td>${nombre(s.exercices.reduce((t, x) => t + volume(x.series), 0))}</td>
+          <td><button class="icone danger" data-supprimer="${s.id}" aria-label="Supprimer la séance">✕</button></td></tr>`).join("")}
+        </tbody>` : `<tbody><tr><td class="meta">Aucune séance pour l'instant.</td></tr></tbody>`;
+    }
+    document.getElementById("recentes").onclick = e => {
+      const b = e.target.closest("[data-supprimer]");
+      if (!b || !confirm("Supprimer cette séance ?")) return;
+      db.seances = db.seances.filter(s => s.id !== b.dataset.supprimer);
+      enregistrer(); afficherRecentes(); message("Séance supprimée");
+    };
+
+    selectEntrainement.onchange = afficher;
+    if (clientId) {
+      selecteurClient(clientId, id => { clientId = id; afficherMenu("seance"); remplirEntrainements(); afficher(); });
+      remplirEntrainements();
+      afficher();
+    } else {
+      zone.innerHTML = `<div class="vide">Ajoute d'abord un client dans la page Clients.</div>`;
+    }
+  </script>
+</body>
+</html>

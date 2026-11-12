@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nutrition — CoachPlan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header id="menu"></header>
+
+  <main>
+    <h1>Nutrition</h1>
+    <div id="sous-menu"></div>
+
+    <!-- Vue 1 : la liste des plans -->
+    <section id="vue-liste">
+      <div class="entete">
+        <p class="sous-titre" id="compte" style="margin:0"></p>
+        <button class="principal" id="btn-nouveau">Créer un plan nutritionnel</button>
+      </div>
+      <div class="liste" id="liste-plans"></div>
+    </section>
+
+    <!-- Vue 2 : créer / modifier un plan -->
+    <section id="vue-plan" hidden>
+      <form id="form-plan" class="carte" style="padding:24px">
+        <div class="etape">
+          <div class="etape-titre"><span class="num">1</span>Nom du plan</div>
+          <input class="nom-plan" name="nom" placeholder="Ex. : Recomposition, phase 1" required>
+        </div>
+
+        <div class="etape">
+          <div class="etape-titre"><span class="num">2</span>Client</div>
+          <input name="client" list="liste-clients" placeholder="Écris le nom du client" autocomplete="off" required>
+          <datalist id="liste-clients"></datalist>
+          <button type="button" class="petit" id="btn-nouveau-client" style="margin-top:8px">Créer un nouveau client</button>
+        </div>
+
+        <div class="grille-2">
+          <div class="etape">
+            <div class="etape-titre"><span class="num">3</span>Date de début</div>
+            <input type="date" name="debut" required>
+          </div>
+          <div class="etape">
+            <div class="etape-titre"><span class="num">4</span>Durée</div>
+            <div class="champ-unite">
+              <input type="number" name="semaines" min="1" max="52" value="4" required>
+              <span>semaine(s)</span>
+            </div>
+            <p class="meta" id="date-fin"></p>
+          </div>
+        </div>
+
+        <div class="etape">
+          <div class="etape-titre"><span class="num">5</span>Objectifs quotidiens</div>
+          <label style="max-width:260px">Poids actuel du client
+            <span class="champ-unite"><input type="number" name="poids" min="0" step="0.1" placeholder="Ex. : 150"><span>lb</span></span>
+          </label>
+          <div class="tableau-defile">
+            <table class="objectifs">
+              <thead><tr><th>Nom</th><th>Valeur</th><th>% des kcal</th><th>Par lb de poids</th></tr></thead>
+              <tbody id="lignes-objectifs"></tbody>
+            </table>
+          </div>
+          <p class="note-info">Les % sont calculés sur l'objectif de calories : protéines et glucides = 4 kcal/g, lipides = 9 kcal/g.
+            Choisis « g/lb » ou « g/kg » pour fixer une quantité selon le poids du client.</p>
+        </div>
+
+        <div class="etape">
+          <div class="etape-titre"><span class="num">6</span>Recettes suggérées</div>
+          <div class="choix-recettes" id="choix-recettes"></div>
+        </div>
+
+        <div class="etape">
+          <div class="etape-titre"><span class="num">7</span>Notes pour le client</div>
+          <textarea name="notes" placeholder="Hydratation, horaire des repas, suppléments…"></textarea>
+        </div>
+
+        <div class="pied" style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <button type="button" class="danger" id="btn-supprimer">Supprimer le plan</button>
+          <span class="actions">
+            <button type="button" id="btn-annuler">Annuler</button>
+            <button type="submit" class="principal">Enregistrer le plan</button>
+          </span>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <script src="js/donnees-depart.js"></script>
+  <script src="js/stockage.js"></script>
+  <script src="js/commun.js"></script>
+  <script>
+    afficherMenu("nutrition");
+    afficherSousMenuNutrition("plans");
+
+    const form = document.getElementById("form-plan");
+    let planEnEdition = null;
+
+    function nomClient(id) { return trouverClient(id)?.nom || "Client supprimé"; }
+    function dateFin(debut, semaines) {
+      if (!debut) return "";
+      const d = new Date(debut + "T12:00:00");
+      d.setDate(d.getDate() + semaines * 7 - 1);
+      return d.toISOString().slice(0, 10);
+    }
+
+    // ---------- Vue liste ----------
+    function afficherListe() {
+      document.getElementById("vue-liste").hidden = false;
+      document.getElementById("vue-plan").hidden = true;
+      const plans = db.plansNutrition.slice().sort((a, b) => (b.debut || "").localeCompare(a.debut || ""));
+      document.getElementById("compte").textContent = `${plans.length} plan${plans.length > 1 ? "s" : ""}`;
+      document.getElementById("liste-plans").innerHTML = plans.length ? plans.map(p => {
+        const g = cle => nombre(quantiteReelle(p.objectifs[cle], p.poids));
+        return `
+        <article class="carte carte-client">
+          <div>
+            <h2>${txt(p.nom)}</h2>
+            <p class="meta">${txt(nomClient(p.clientId))}, du ${dateLisible(p.debut)} au ${dateLisible(dateFin(p.debut, p.semaines))} (${p.semaines} sem.)</p>
+            <div class="macros" style="margin-top:6px">
+              <span><b>${g("calories")}</b> kcal</span><span><b>${g("proteines")}</b> g prot.</span>
+              <span><b>${g("glucides")}</b> g gluc.</span><span><b>${g("lipides")}</b> g lip.</span>
+              <span><b>${g("fibres")}</b> g fibres</span>
+            </div>
+          </div>
+          <div class="actions">
+            <button data-modifier="${p.id}">Modifier</button>
+            <button data-dupliquer="${p.id}">Dupliquer</button>
+          </div>
+        </article>`;
+      }).join("") : `<div class="vide">Aucun plan pour l'instant. Clique sur « Créer un plan nutritionnel ».</div>`;
+    }
+
+    document.getElementById("liste-plans").onclick = e => {
+      const m = e.target.closest("[data-modifier]");
+      if (m) ouvrirPlan(db.plansNutrition.find(p => p.id === m.dataset.modifier));
+      const d = e.target.closest("[data-dupliquer]");
+      if (d) {
+        const copie = JSON.parse(JSON.stringify(db.plansNutrition.find(p => p.id === d.dataset.dupliquer)));
+        copie.id = Donnees.nouvelId("n"); copie.nom += " (copie)"; copie.clientId = "";
+        ouvrirPlan(copie, true);
+      }
+    };
+
+    // ---------- Vue plan ----------
+    function lignesObjectifs() {
+      document.getElementById("lignes-objectifs").innerHTML = MACROS.map(m => `
+        <tr data-macro="${m.cle}">
+          <td>${m.nom}</td>
+          <td data-label="Valeur">
+            <div class="champ-unite">
+              <input type="number" min="0" step="any" placeholder="Quantité" data-champ="valeur" aria-label="${m.nom}">
+              ${m.cle === "calories" ? `<span>kcal</span>` : `
+              <select data-champ="unite" aria-label="Unité ${m.nom}">
+                <option value="g">g</option><option value="g/lb">g/lb</option><option value="g/kg">g/kg</option>
+              </select>`}
+            </div>
+          </td>
+          <td data-label="% des kcal"><div class="calcule" data-sortie="pourcent">%</div></td>
+          <td data-label="Par lb de poids"><div class="calcule" data-sortie="parpoids"></div></td>
+        </tr>`).join("");
+    }
+
+    function lireObjectifs() {
+      const objectifs = {};
+      document.querySelectorAll("[data-macro]").forEach(tr => {
+        objectifs[tr.dataset.macro] = {
+          valeur: tr.querySelector('[data-champ="valeur"]').value,
+          unite: tr.querySelector('[data-champ="unite"]')?.value || "kcal",
+        };
+      });
+      return objectifs;
+    }
+
+    // Recalcule les colonnes grises à chaque changement
+    function recalculer() {
+      const poids = Number(form.poids.value) || 0;
+      const objectifs = lireObjectifs();
+      const calories = quantiteReelle(objectifs.calories, poids);
+      let kcalMacros = 0;
+      for (const m of MACROS) {
+        const tr = document.querySelector(`[data-macro="${m.cle}"]`);
+        const qte = quantiteReelle(objectifs[m.cle], poids);
+        const pct = tr.querySelector('[data-sortie="pourcent"]');
+        const parPoids = tr.querySelector('[data-sortie="parpoids"]');
+        const unite = m.cle === "calories" ? "kcal" : "g";
+
+        if (m.kcal) {
+          kcalMacros += qte * m.kcal;
+          pct.textContent = calories && qte ? `${nombre(qte * m.kcal / calories * 100)} %` : "%";
+        } else if (m.cle === "calories") {
+          pct.textContent = calories && kcalMacros ? `macros : ${nombre(kcalMacros)} kcal` : "%";
+        } else pct.textContent = "—";
+        pct.classList.toggle("ok", pct.textContent.length > 1 && pct.textContent !== "—");
+
+        const precise = objectifs[m.cle].unite.startsWith("g/") && qte ? ` (${nombre(qte)} g)` : "";
+        parPoids.textContent = poids && qte ? `${nombre(qte / poids)} ${unite}/lb${precise}` : (objectifs[m.cle].unite.startsWith("g/") ? "Entre le poids" : "");
+        parPoids.classList.toggle("ok", !!(poids && qte));
+      }
+      // Calories : prévenir si les macros dépassent l'objectif
+      const pctCal = document.querySelector('[data-macro="calories"] [data-sortie="pourcent"]');
+      pctCal.style.color = calories && kcalMacros > calories * 1.05 ? "var(--danger)" : "";
+
+      const fin = dateFin(form.debut.value, Number(form.semaines.value) || 0);
+      document.getElementById("date-fin").textContent = fin ? `Fin : ${dateLisible(fin)}` : "";
+    }
+
+    function ouvrirPlan(plan, estCopie = false) {
+      planEnEdition = plan;
+      document.getElementById("vue-liste").hidden = true;
+      document.getElementById("vue-plan").hidden = false;
+      form.reset();
+      lignesObjectifs();
+      document.getElementById("liste-clients").innerHTML =
+        db.clients.filter(c => c.actif !== false).map(c => `<option value="${txt(c.nom)}">`).join("");
+      document.getElementById("choix-recettes").innerHTML = db.recettes.length
+        ? db.recettes.map(r => `<label><input type="checkbox" value="${r.id}" ${plan?.recettes?.includes(r.id) ? "checked" : ""}>${txt(r.titre)}</label>`).join("")
+        : `<p class="meta">Aucune recette pour l'instant. <a href="recettes.html">Ajouter des recettes</a></p>`;
+
+      if (plan) {
+        form.nom.value = plan.nom;
+        form.client.value = plan.clientId ? nomClient(plan.clientId) : "";
+        form.debut.value = plan.debut;
+        form.semaines.value = plan.semaines;
+        form.poids.value = plan.poids || "";
+        form.notes.value = plan.notes || "";
+        for (const m of MACROS) {
+          const tr = document.querySelector(`[data-macro="${m.cle}"]`);
+          tr.querySelector('[data-champ="valeur"]').value = plan.objectifs[m.cle]?.valeur ?? "";
+          const sel = tr.querySelector('[data-champ="unite"]');
+          if (sel) sel.value = plan.objectifs[m.cle]?.unite || "g";
+        }
+      } else {
+        form.debut.value = aujourdhui();
+        // Si on arrive depuis un client (?client=…), on le pré-remplit
+        const c = trouverClient(parametre("client") || "");
+        if (c) { form.client.value = c.nom; form.poids.value = c.poids || ""; }
+      }
+      document.getElementById("btn-supprimer").hidden = !plan || estCopie;
+      planEnEdition = estCopie ? { ...plan, _nouveau: true } : plan;
+      recalculer();
+      window.scrollTo({ top: 0 });
+      form.nom.focus();
+    }
+
+    // Quand on choisit un client, on reprend son poids
+    form.client.addEventListener("change", () => {
+      const c = db.clients.find(c => c.nom.toLowerCase() === form.client.value.trim().toLowerCase());
+      if (c?.poids && !form.poids.value) { form.poids.value = c.poids; recalculer(); }
+    });
+    form.addEventListener("input", recalculer);
+    form.addEventListener("change", recalculer);
+
+    form.addEventListener("submit", e => {
+      e.preventDefault();
+      const nom = form.client.value.trim().toLowerCase();
+      const client = db.clients.find(c => c.nom.toLowerCase() === nom);
+      if (!client) {
+        form.client.setCustomValidity("Ce client n'existe pas. Choisis-le dans la liste ou clique sur « Créer un nouveau client ».");
+        form.client.reportValidity();
+        form.client.oninput = () => form.client.setCustomValidity("");
+        return;
+      }
+      const valeurs = {
+        nom: form.nom.value.trim(), clientId: client.id, debut: form.debut.value,
+        semaines: Number(form.semaines.value) || 4, poids: Number(form.poids.value) || null,
+        objectifs: lireObjectifs(), notes: form.notes.value,
+        recettes: [...document.querySelectorAll("#choix-recettes input:checked")].map(i => i.value),
+      };
+      if (valeurs.poids) client.poids = valeurs.poids; // garde le poids à jour dans la fiche client
+      if (planEnEdition && !planEnEdition._nouveau) Object.assign(planEnEdition, valeurs);
+      else db.plansNutrition.push({ id: planEnEdition?.id || Donnees.nouvelId("n"), ...valeurs });
+      enregistrer();
+      message("Plan enregistré");
+      afficherListe();
+    });
+
+    document.getElementById("btn-nouveau-client").onclick = () => {
+      const nom = prompt("Nom du nouveau client :", form.client.value);
+      if (!nom || !nom.trim()) return;
+      db.clients.push({ id: Donnees.nouvelId("c"), nom: nom.trim(), courriel: "", objectifs: "", notes: "",
+        debut: aujourdhui(), code: Donnees.nouveauCode(), actif: true });
+      enregistrer();
+      form.client.value = nom.trim();
+      form.client.setCustomValidity("");
+      document.getElementById("liste-clients").insertAdjacentHTML("beforeend", `<option value="${txt(nom.trim())}">`);
+      message("Client créé");
+    };
+    document.getElementById("btn-annuler").onclick = afficherListe;
+    document.getElementById("btn-supprimer").onclick = () => {
+      if (!confirm("Supprimer ce plan ?")) return;
+      db.plansNutrition = db.plansNutrition.filter(p => p !== planEnEdition);
+      enregistrer(); message("Plan supprimé"); afficherListe();
+    };
+    document.getElementById("btn-nouveau").onclick = () => ouvrirPlan(null);
+
+    // Ouverture directe depuis la page Clients
+    const planDemande = db.plansNutrition.find(p => p.id === parametre("plan"));
+    const clientDemande = trouverClient(parametre("client") || "");
+    if (planDemande) ouvrirPlan(planDemande);
+    else if (clientDemande) {
+      const existant = planNutritionDuClient(clientDemande.id);
+      if (existant && !parametre("nouveau")) ouvrirPlan(existant);
+      else ouvrirPlan(null);
+    } else afficherListe();
+  </script>
+</body>
+</html>

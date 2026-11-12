@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Exercices — CoachPlan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header id="menu"></header>
+
+  <main>
+    <div class="entete">
+      <div>
+        <h1>Bibliothèque d'exercices</h1>
+        <p class="sous-titre" id="compte"></p>
+      </div>
+      <div class="barre-outils">
+        <input type="search" id="recherche" class="recherche" placeholder="Chercher un exercice" aria-label="Chercher un exercice">
+        <button class="principal" id="btn-ajouter">Ajouter un exercice</button>
+      </div>
+    </div>
+    <div class="filtres" id="filtres"></div>
+    <div class="grille-exercices" id="grille"></div>
+  </main>
+
+  <dialog id="fenetre">
+    <form method="dialog" id="form-ex">
+      <h2 id="titre-fenetre">Exercice</h2>
+      <img class="apercu-image" id="apercu-image" alt="" hidden>
+      <div id="apercu-video"></div>
+      <label>Nom <input name="nom" required></label>
+      <div class="grille-2">
+        <label>Catégorie <select name="categorie" id="select-categorie"></select></label>
+        <label>Équipement <input name="equipement" placeholder="Haltères, machine, poulie…"></label>
+      </div>
+      <label>Photo (lien) <input name="image" type="url" placeholder="https://…"></label>
+      <label>Vidéo (lien YouTube ou Vimeo) <input name="video" type="url" placeholder="https://youtu.be/…"></label>
+      <label>Consignes de technique <textarea name="consignes" placeholder="Points clés à rappeler au client"></textarea></label>
+      <div class="pied">
+        <button type="button" class="danger" id="btn-supprimer">Supprimer</button>
+        <span class="actions">
+          <button type="button" id="btn-annuler">Annuler</button>
+          <button type="submit" class="principal">Enregistrer</button>
+        </span>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="js/donnees-depart.js"></script>
+  <script src="js/stockage.js"></script>
+  <script src="js/commun.js"></script>
+  <script>
+    afficherMenu("exercices");
+
+    let categorieChoisie = "Toutes";
+    let enEdition = null;
+    const fenetre = document.getElementById("fenetre");
+    const form = document.getElementById("form-ex");
+
+    document.getElementById("select-categorie").innerHTML =
+      CATEGORIES.map(c => `<option>${c}</option>`).join("");
+
+    function afficherFiltres() {
+      document.getElementById("filtres").innerHTML = ["Toutes", ...CATEGORIES].map(c =>
+        `<button aria-pressed="${c === categorieChoisie}" data-cat="${c}">${c}</button>`).join("");
+    }
+
+    function afficherGrille() {
+      const recherche = document.getElementById("recherche").value.toLowerCase();
+      const liste = db.exercices
+        .filter(e => categorieChoisie === "Toutes" || e.categorie === categorieChoisie)
+        .filter(e => e.nom.toLowerCase().includes(recherche) || (e.equipement || "").toLowerCase().includes(recherche))
+        .sort((a, b) => a.nom.localeCompare(b.nom));
+      document.getElementById("compte").textContent = `${liste.length} sur ${db.exercices.length} exercices`;
+      document.getElementById("grille").innerHTML = liste.length ? liste.map(e => `
+        <button class="tuile" data-id="${e.id}">
+          <span class="vignette" style="background-image:url('${txt(e.image)}')"></span>
+          <span class="corps">
+            <strong>${txt(e.nom)}</strong>
+            <span>${pastille(e.categorie)}</span>
+            <span class="meta ${e.video ? "a-video" : ""}">${txt(e.equipement || "—")}</span>
+          </span>
+        </button>`).join("")
+        : `<div class="vide">Aucun exercice trouvé.</div>`;
+    }
+
+    function apercu() {
+      const img = document.getElementById("apercu-image");
+      img.hidden = !form.image.value;
+      img.src = form.image.value;
+      document.getElementById("apercu-video").innerHTML = blocVideo(form.video.value);
+    }
+
+    function ouvrir(ex) {
+      enEdition = ex;
+      form.reset();
+      document.getElementById("titre-fenetre").textContent = ex ? ex.nom : "Nouvel exercice";
+      document.getElementById("btn-supprimer").hidden = !ex;
+      if (ex) for (const champ of ["nom", "categorie", "equipement", "image", "video", "consignes"]) form[champ].value = ex[champ] || "";
+      apercu();
+      fenetre.showModal();
+    }
+
+    form.image.addEventListener("input", apercu);
+    form.video.addEventListener("change", apercu);
+
+    form.addEventListener("submit", () => {
+      const valeurs = Object.fromEntries(new FormData(form));
+      if (enEdition) Object.assign(enEdition, valeurs);
+      else db.exercices.push({ id: Donnees.nouvelId("ex"), ...valeurs });
+      enregistrer(); afficherGrille();
+      message("Exercice enregistré");
+    });
+
+    document.getElementById("btn-supprimer").onclick = () => {
+      const utilise = db.programmes.some(p => p.entrainements.some(w => w.exercices.some(x => x.exerciceId === enEdition.id)));
+      if (utilise) { alert("Cet exercice est dans un programme. Retire-le du programme d'abord."); return; }
+      if (!confirm("Supprimer « " + enEdition.nom + " » ?")) return;
+      db.exercices = db.exercices.filter(e => e !== enEdition);
+      enregistrer(); fenetre.close(); afficherGrille();
+      message("Exercice supprimé");
+    };
+    document.getElementById("btn-annuler").onclick = () => fenetre.close();
+    document.getElementById("btn-ajouter").onclick = () => ouvrir(null);
+    document.getElementById("recherche").oninput = afficherGrille;
+    document.getElementById("filtres").onclick = e => {
+      const b = e.target.closest("[data-cat]");
+      if (!b) return;
+      categorieChoisie = b.dataset.cat;
+      afficherFiltres(); afficherGrille();
+    };
+    document.getElementById("grille").onclick = e => {
+      const t = e.target.closest("[data-id]");
+      if (t) ouvrir(trouverExercice(t.dataset.id));
+    };
+
+    afficherFiltres();
+    afficherGrille();
+  </script>
+</body>
+</html>

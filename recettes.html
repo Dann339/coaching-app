@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Recettes — CoachPlan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header id="menu"></header>
+
+  <main>
+    <h1>Nutrition</h1>
+    <div id="sous-menu"></div>
+    <div class="entete">
+      <div>
+        <p class="sous-titre" style="margin:0">Les macros sont par portion.</p>
+      </div>
+      <div class="barre-outils">
+        <input type="search" id="recherche" class="recherche" placeholder="Chercher une recette" aria-label="Chercher une recette">
+        <button class="principal" id="btn-ajouter">Ajouter une recette</button>
+      </div>
+    </div>
+    <div class="filtres" id="filtres"></div>
+    <div class="grille-recettes" id="grille"></div>
+  </main>
+
+  <!-- Voir une recette -->
+  <dialog id="fenetre-voir"><div class="contenu recette-detail" id="detail"></div></dialog>
+
+  <!-- Ajouter / modifier -->
+  <dialog id="fenetre-modifier">
+    <form method="dialog" id="form-recette">
+      <h2 id="titre-form">Recette</h2>
+      <label>Titre <input name="titre" required></label>
+      <label>Vidéo (lien YouTube ou Vimeo, la tienne ou celle d'un autre créateur) <input name="video" type="url"></label>
+      <label>Photo (lien) <input name="photo" type="url"></label>
+      <div class="grille-2">
+        <label>Portions <input name="portions" type="number" min="1"></label>
+        <label>Calories <input name="calories" type="number" min="0"></label>
+        <label>Protéines (g) <input name="proteines" type="number" min="0"></label>
+        <label>Glucides (g) <input name="glucides" type="number" min="0"></label>
+        <label>Lipides (g) <input name="lipides" type="number" min="0"></label>
+        <label>Étiquettes (séparées par des virgules) <input name="tags" placeholder="Déjeuner, Rapide"></label>
+      </div>
+      <label>Ingrédients (un par ligne) <textarea name="ingredients" rows="5"></textarea></label>
+      <label>Étapes (une par ligne) <textarea name="etapes" rows="5"></textarea></label>
+      <div class="pied">
+        <button type="button" class="danger" id="btn-supprimer">Supprimer</button>
+        <span class="actions">
+          <button type="button" id="btn-annuler">Annuler</button>
+          <button type="submit" class="principal">Enregistrer</button>
+        </span>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="js/donnees-depart.js"></script>
+  <script src="js/stockage.js"></script>
+  <script src="js/commun.js"></script>
+  <script>
+    afficherMenu("recettes");
+    afficherSousMenuNutrition("recettes");
+    let etiquette = "Toutes";
+    let enEdition = null;
+    const form = document.getElementById("form-recette");
+
+    function macros(r) {
+      return `<div class="macros"><span><b>${r.calories || 0}</b> cal</span><span><b>${r.proteines || 0}</b> g prot.</span>
+        <span><b>${r.glucides || 0}</b> g gluc.</span><span><b>${r.lipides || 0}</b> g lip.</span></div>`;
+    }
+
+    function afficher() {
+      const toutes = [...new Set(db.recettes.flatMap(r => r.tags || []))].sort();
+      document.getElementById("filtres").innerHTML = ["Toutes", ...toutes].map(t =>
+        `<button aria-pressed="${t === etiquette}" data-tag="${txt(t)}">${txt(t)}</button>`).join("");
+      const recherche = document.getElementById("recherche").value.toLowerCase();
+      const liste = db.recettes.filter(r => (etiquette === "Toutes" || (r.tags || []).includes(etiquette))
+        && r.titre.toLowerCase().includes(recherche));
+      document.getElementById("grille").innerHTML = liste.length ? liste.map(r => `
+        <button class="tuile" data-id="${r.id}">
+          ${r.photo ? `<span class="vignette" style="background-image:url('${txt(r.photo)}')"></span>` : ""}
+          <span class="corps">
+            <strong style="font-family:var(--titres);font-size:1.3rem">${txt(r.titre)}</strong>
+            ${macros(r)}
+            <span class="meta ${r.video ? "a-video" : ""}">${txt((r.tags || []).join(", "))}</span>
+          </span>
+        </button>`).join("") : `<div class="vide">Aucune recette. Clique sur « Ajouter une recette ».</div>`;
+    }
+
+    function voir(r) {
+      document.getElementById("detail").innerHTML = `
+        <h2>${txt(r.titre)}</h2>
+        ${macros(r)}
+        ${r.video ? blocVideo(r.video) : `<p class="meta" style="margin-top:8px">Pas encore de vidéo. Ajoute un lien YouTube avec « Modifier ».</p>`}
+        <h3>Ingrédients (${r.portions || 1} portion${r.portions > 1 ? "s" : ""})</h3>
+        <ul>${(r.ingredients || []).map(i => `<li>${txt(i)}</li>`).join("")}</ul>
+        <h3>Étapes</h3>
+        <ol>${(r.etapes || []).map(e => `<li>${txt(e)}</li>`).join("")}</ol>
+        <div class="pied"><button id="btn-modifier">Modifier</button><button class="principal" id="btn-fermer">Fermer</button></div>`;
+      const fenetre = document.getElementById("fenetre-voir");
+      fenetre.showModal();
+      document.getElementById("btn-fermer").onclick = () => fenetre.close();
+      document.getElementById("btn-modifier").onclick = () => { fenetre.close(); modifier(r); };
+    }
+
+    function modifier(r) {
+      enEdition = r;
+      form.reset();
+      document.getElementById("titre-form").textContent = r ? "Modifier la recette" : "Nouvelle recette";
+      document.getElementById("btn-supprimer").hidden = !r;
+      if (r) {
+        for (const c of ["titre", "video", "photo", "portions", "calories", "proteines", "glucides", "lipides"]) form[c].value = r[c] ?? "";
+        form.tags.value = (r.tags || []).join(", ");
+        form.ingredients.value = (r.ingredients || []).join("\n");
+        form.etapes.value = (r.etapes || []).join("\n");
+      }
+      document.getElementById("fenetre-modifier").showModal();
+    }
+
+    form.addEventListener("submit", () => {
+      const v = Object.fromEntries(new FormData(form));
+      const recette = {
+        titre: v.titre, video: v.video, photo: v.photo,
+        portions: Number(v.portions) || 1, calories: Number(v.calories) || 0, proteines: Number(v.proteines) || 0,
+        glucides: Number(v.glucides) || 0, lipides: Number(v.lipides) || 0,
+        tags: v.tags.split(",").map(t => t.trim()).filter(Boolean),
+        ingredients: v.ingredients.split("\n").map(t => t.trim()).filter(Boolean),
+        etapes: v.etapes.split("\n").map(t => t.trim()).filter(Boolean),
+      };
+      if (enEdition) Object.assign(enEdition, recette);
+      else db.recettes.push({ id: Donnees.nouvelId("r"), ...recette });
+      enregistrer(); afficher(); message("Recette enregistrée");
+    });
+    document.getElementById("btn-supprimer").onclick = () => {
+      if (!confirm("Supprimer cette recette ?")) return;
+      db.recettes = db.recettes.filter(r => r !== enEdition);
+      enregistrer(); document.getElementById("fenetre-modifier").close(); afficher();
+      message("Recette supprimée");
+    };
+    document.getElementById("btn-annuler").onclick = () => document.getElementById("fenetre-modifier").close();
+    document.getElementById("btn-ajouter").onclick = () => modifier(null);
+    document.getElementById("recherche").oninput = afficher;
+    document.getElementById("filtres").onclick = e => {
+      const b = e.target.closest("[data-tag]"); if (!b) return;
+      etiquette = b.dataset.tag; afficher();
+    };
+    document.getElementById("grille").onclick = e => {
+      const t = e.target.closest("[data-id]");
+      if (t) voir(db.recettes.find(r => r.id === t.dataset.id));
+    };
+    afficher();
+  </script>
+</body>
+</html>

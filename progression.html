@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Progression — CoachPlan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header id="menu"></header>
+
+  <main>
+    <div class="entete">
+      <div>
+        <h1>Progression</h1>
+        <p class="sous-titre">Calculée automatiquement à partir des séances enregistrées.</p>
+      </div>
+      <div class="barre-outils" id="choix-client"></div>
+    </div>
+
+    <div class="chiffres" id="chiffres"></div>
+
+    <div class="deux-colonnes">
+      <section class="carte">
+        <div class="barre-outils" style="justify-content:space-between;margin-bottom:8px">
+          <h2 style="margin:0" id="titre-exercice">Exercice</h2>
+          <select id="select-exercice" aria-label="Choisir un exercice" style="width:auto;max-width:100%"></select>
+        </div>
+        <p class="meta">Poids max par semaine (lb)</p>
+        <div id="graphique"></div>
+        <div class="tableau-defile" style="margin-top:12px"><table class="donnees" id="tableau-semaines"></table></div>
+        <p class="meta" style="margin-top:8px">Vert : volume en hausse par rapport à la semaine d'avant. Rouge : en baisse.</p>
+      </section>
+
+      <section class="carte">
+        <h2>Records personnels</h2>
+        <table class="donnees" id="records"></table>
+      </section>
+    </div>
+  </main>
+
+  <script src="js/donnees-depart.js"></script>
+  <script src="js/stockage.js"></script>
+  <script src="js/commun.js"></script>
+  <script>
+    afficherMenu("progression");
+    let clientId = clientCourant();
+    const selectEx = document.getElementById("select-exercice");
+
+    // Regroupe les séances d'un exercice par semaine (lundi)
+    function semainesPour(exerciceId) {
+      const parSemaine = {};
+      for (const s of seancesDuClient(clientId)) {
+        for (const x of s.exercices) {
+          if (x.exerciceId !== exerciceId) continue;
+          const lundi = lundiDe(s.date);
+          const sem = parSemaine[lundi] ||= { lundi, max: 0, volume: 0 };
+          sem.max = Math.max(sem.max, poidsMax(x.series));
+          sem.volume += volume(x.series);
+        }
+      }
+      return Object.values(parSemaine).sort((a, b) => a.lundi.localeCompare(b.lundi));
+    }
+
+    // Petit graphique en ligne, dessiné en SVG (pas de bibliothèque à installer)
+    function dessinerGraphique(semaines) {
+      const zone = document.getElementById("graphique");
+      if (semaines.length < 2) { zone.innerHTML = `<p class="meta">Il faut au moins 2 semaines pour tracer la courbe.</p>`; return; }
+      const L = 640, H = 220, m = { g: 40, d: 16, h: 16, b: 28 };
+      const valeurs = semaines.map(s => s.max);
+      const min = Math.min(...valeurs), max = Math.max(...valeurs);
+      const bas = Math.max(0, Math.floor((min - (max - min || 10) * 0.3) / 5) * 5);
+      const haut = Math.ceil((max + (max - min || 10) * 0.2) / 5) * 5;
+      const x = i => m.g + i * (L - m.g - m.d) / (semaines.length - 1);
+      const y = v => m.h + (H - m.h - m.b) * (1 - (v - bas) / (haut - bas));
+      const graduations = [bas, (bas + haut) / 2, haut];
+      const points = semaines.map((s, i) => `${x(i)},${y(s.max)}`).join(" ");
+      zone.innerHTML = `
+        <svg class="graphique" viewBox="0 0 ${L} ${H}" role="img" aria-label="Poids max par semaine">
+          ${graduations.map(g => `<line x1="${m.g}" x2="${L - m.d}" y1="${y(g)}" y2="${y(g)}" stroke="#d8dcdf"/>
+            <text x="${m.g - 6}" y="${y(g) + 4}" text-anchor="end">${nombre(g)}</text>`).join("")}
+          <polyline points="${points}" fill="none" stroke="#1f5fbf" stroke-width="2.5" stroke-linejoin="round"/>
+          ${semaines.map((s, i) => `<circle cx="${x(i)}" cy="${y(s.max)}" r="4" fill="#1f5fbf"><title>${dateLisible(s.lundi)} : ${nombre(s.max)} lb</title></circle>`).join("")}
+          ${semaines.map((s, i) => (i % Math.ceil(semaines.length / 8) === 0 || i === semaines.length - 1)
+            ? `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${new Date(s.lundi + "T12:00").toLocaleDateString("fr-CA", { day: "numeric", month: "short" })}</text>` : "").join("")}
+        </svg>`;
+    }
+
+    function afficherExercice() {
+      const ex = trouverExercice(selectEx.value);
+      if (!ex) return;
+      document.getElementById("titre-exercice").textContent = ex.nom;
+      const semaines = semainesPour(ex.id);
+      dessinerGraphique(semaines);
+      document.getElementById("tableau-semaines").innerHTML = `
+        <thead><tr><th>Semaine du</th><th>Poids max (lb)</th><th>Volume (lb)</th></tr></thead>
+        <tbody>${semaines.slice().reverse().map((s, i, arr) => {
+          const avant = arr[i + 1];
+          const classe = !avant ? "" : s.volume > avant.volume ? "hausse" : s.volume < avant.volume ? "baisse" : "";
+          return `<tr><td>${dateLisible(s.lundi)}</td><td>${nombre(s.max)}</td><td class="${classe}">${nombre(s.volume)}</td></tr>`;
+        }).join("")}</tbody>`;
+    }
+
+    function afficher() {
+      const seances = seancesDuClient(clientId);
+      const mois = aujourdhui().slice(0, 7);
+      const ceMois = seances.filter(s => s.date.startsWith(mois));
+      const il28jours = new Date(Date.now() - 28 * 864e5).toISOString().slice(0, 10);
+      const recentes = seances.filter(s => s.date >= il28jours).length;
+      document.getElementById("chiffres").innerHTML = [
+        [seances.length, "séances au total"],
+        [nombre(recentes / 4), "séances par semaine (4 dern. sem.)"],
+        [nombre(ceMois.reduce((t, s) => t + s.exercices.reduce((v, x) => v + volume(x.series), 0), 0)), "lb de volume ce mois-ci"],
+        [ceMois.reduce((t, s) => t + s.cardio.reduce((m, c) => m + (Number(c.minutes) || 0), 0), 0), "minutes de cardio ce mois-ci"],
+      ].map(([v, l]) => `<div class="chiffre"><b>${v}</b><span>${l}</span></div>`).join("");
+
+      // Exercices : d'abord ceux du programme, puis les autres déjà faits
+      const prog = programmeDuClient(clientId);
+      const ids = [];
+      prog?.entrainements.forEach(w => w.exercices.forEach(x => !ids.includes(x.exerciceId) && ids.push(x.exerciceId)));
+      seances.forEach(s => s.exercices.forEach(x => !ids.includes(x.exerciceId) && ids.push(x.exerciceId)));
+      const faits = ids.filter(id => trouverExercice(id) && semainesPour(id).some(s => s.max > 0));
+      selectEx.innerHTML = faits.map(id => `<option value="${id}">${txt(trouverExercice(id).nom)}</option>`).join("");
+      if (faits.length) afficherExercice();
+      else {
+        document.getElementById("titre-exercice").textContent = "Aucune donnée";
+        document.getElementById("graphique").innerHTML = `<div class="vide">Enregistre une séance pour voir la progression.</div>`;
+        document.getElementById("tableau-semaines").innerHTML = "";
+      }
+
+      // Records : meilleur poids par exercice
+      const records = {};
+      for (const s of seances) for (const x of s.exercices) {
+        const p = poidsMax(x.series);
+        if (p > 0 && (!records[x.exerciceId] || p > records[x.exerciceId].poids)) records[x.exerciceId] = { poids: p, date: s.date };
+      }
+      const top = Object.entries(records).sort((a, b) => b[1].poids - a[1].poids).slice(0, 10);
+      document.getElementById("records").innerHTML = top.length ? `
+        <thead><tr><th>Exercice</th><th>lb</th></tr></thead>
+        <tbody>${top.map(([id, r]) => `<tr><td>${txt(trouverExercice(id)?.nom)}<div class="meta">${dateLisible(r.date)}</div></td><td>${nombre(r.poids)}</td></tr>`).join("")}</tbody>`
+        : `<tbody><tr><td class="meta">Pas encore de record.</td></tr></tbody>`;
+    }
+
+    selectEx.onchange = afficherExercice;
+    if (clientId) {
+      selecteurClient(clientId, id => { clientId = id; afficherMenu("progression"); afficher(); });
+      afficher();
+    }
+  </script>
+</body>
+</html>
