@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connexion — CoachPlan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<!-- Connexion du coach. Les clients n'en ont pas besoin : ils utilisent leur lien. -->
+<body>
+  <header id="menu"><span class="marque"><span class="disque" aria-hidden="true"></span>Coach<b>Plan</b></span></header>
+
+  <main style="max-width:420px">
+    <h1>Connexion</h1>
+    <p class="sous-titre">Espace du coach.</p>
+    <form class="carte" id="form-connexion" style="margin-top:16px">
+      <label>Courriel <input type="email" name="courriel" autocomplete="username" required></label>
+      <label>Mot de passe <input type="password" name="motdepasse" autocomplete="current-password" required></label>
+      <p class="meta" id="erreur" role="alert" style="color:var(--danger)"></p>
+      <button class="principal" type="submit" style="width:100%;justify-content:center">Se connecter</button>
+    </form>
+    <p class="meta" style="margin-top:16px">Mot de passe oublié : change-le dans Supabase, section Authentication &gt; Users.</p>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/stockage.js"></script>
+  <script src="js/commun.js"></script>
+  <script>
+    Donnees.pret.then(async () => {
+      const retour = parametre("retour") || "index.html";
+      // Déjà connecté : on va directement à l'app
+      const { data: { session } } = await sb.auth.getSession();
+      const sur = /^[a-z-]+\.html(\?.*)?$/.test(retour) ? retour : "index.html";
+      if (session) { location.href = sur; return; }
+
+      const form = document.getElementById("form-connexion");
+      form.addEventListener("submit", async e => {
+        e.preventDefault();
+        const bouton = form.querySelector("button");
+        bouton.disabled = true; bouton.textContent = "Connexion…";
+        const { error } = await sb.auth.signInWithPassword({
+          email: form.courriel.value.trim(), password: form.motdepasse.value,
+        });
+        if (error) {
+          document.getElementById("erreur").textContent =
+            error.message.includes("Invalid") ? "Courriel ou mot de passe incorrect." : error.message;
+          bouton.disabled = false; bouton.textContent = "Se connecter";
+          return;
+        }
+        // Retour seulement vers une page de l'app (pas vers un autre site)
+        location.href = sur;
+      });
+    });
+  </script>
+</body>
+</html>

@@ -25,10 +25,7 @@
 
     <div class="liste" id="liste-clients"></div>
 
-    <p class="meta" style="margin-top:32px">
-      Pour l'instant, les données sont gardées dans ce navigateur seulement.
-      <button class="petit danger" id="btn-reinitialiser">Tout effacer</button>
-    </p>
+
   </main>
 
   <!-- Fenêtre pour ajouter / modifier un client -->
@@ -57,10 +54,12 @@
     </form>
   </dialog>
 
-  <script src="js/donnees-depart.js"></script>
+  <script src="js/config.js"></script>
   <script src="js/stockage.js"></script>
   <script src="js/commun.js"></script>
   <script>
+    // La page s'affiche quand les données en ligne sont chargées
+    Donnees.pret.then(() => {
     afficherMenu("clients");
 
     const fenetre = document.getElementById("fenetre-client");
@@ -182,14 +181,9 @@
       }
     });
 
-    document.getElementById("btn-reinitialiser").onclick = () => {
-      if (!confirm("Effacer tous les clients, programmes, séances et recettes ? La bibliothèque d'exercices revient à celle de départ.")) return;
-      db = Donnees.reinitialiser();
-      afficherClients();
-      message("Tout est effacé");
-    };
 
     afficherClients();
+    });
   </script>
 </body>
 </html>

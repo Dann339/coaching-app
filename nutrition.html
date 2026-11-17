@@ -90,10 +90,12 @@
     </section>
   </main>
 
-  <script src="js/donnees-depart.js"></script>
+  <script src="js/config.js"></script>
   <script src="js/stockage.js"></script>
   <script src="js/commun.js"></script>
   <script>
+    // La page s'affiche quand les données en ligne sont chargées
+    Donnees.pret.then(() => {
     afficherMenu("nutrition");
     afficherSousMenuNutrition("plans");
 
@@ -307,6 +309,7 @@
       if (existant && !parametre("nouveau")) ouvrirPlan(existant);
       else ouvrirPlan(null);
     } else afficherListe();
+    });
   </script>
 </body>
 </html>

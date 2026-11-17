@@ -49,10 +49,12 @@
     </form>
   </dialog>
 
-  <script src="js/donnees-depart.js"></script>
+  <script src="js/config.js"></script>
   <script src="js/stockage.js"></script>
   <script src="js/commun.js"></script>
   <script>
+    // La page s'affiche quand les données en ligne sont chargées
+    Donnees.pret.then(() => {
     afficherMenu("exercices");
 
     let categorieChoisie = "Toutes";
@@ -139,6 +141,7 @@
 
     afficherFiltres();
     afficherGrille();
+    });
   </script>
 </body>
 </html>

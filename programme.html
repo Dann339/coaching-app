@@ -26,10 +26,12 @@
   <!-- Liste des noms d'exercices pour l'autocomplétion -->
   <datalist id="noms-exercices"></datalist>
 
-  <script src="js/donnees-depart.js"></script>
+  <script src="js/config.js"></script>
   <script src="js/stockage.js"></script>
   <script src="js/commun.js"></script>
   <script>
+    // La page s'affiche quand les données en ligne sont chargées
+    Donnees.pret.then(() => {
     afficherMenu("programme");
 
     let clientId = clientCourant();
@@ -42,6 +44,21 @@
       const n = nom.trim().toLowerCase();
       return db.exercices.find(e => e.nom.toLowerCase() === n);
     }
+
+    // ---------- Copier / coller les paramètres d'un exercice ----------
+    // Séries, reps, tempo, RIR et repos. Gardé pour cet onglet (même en changeant de client).
+    const CHAMPS_COPIES = ["series", "reps", "tempo", "rir", "repos"];
+    let copie = null;
+    try { copie = JSON.parse(sessionStorage.getItem("coachplan-copie") || "null"); } catch { copie = null; }
+    function garderCopie(valeur) {
+      copie = valeur;
+      try { valeur ? sessionStorage.setItem("coachplan-copie", JSON.stringify(valeur)) : sessionStorage.removeItem("coachplan-copie"); } catch { }
+    }
+    function resumeCopie(c) {
+      return [c.series && c.reps ? `${c.series} × ${c.reps}` : c.series || c.reps, c.tempo && `Tempo ${c.tempo}`,
+        c.rir && `RIR ${c.rir}`, c.repos && `Repos ${c.repos}`].filter(Boolean).join(", ") || "valeurs vides";
+    }
+    function collerDans(x) { for (const champ of CHAMPS_COPIES) x[champ] = copie[champ] ?? ""; }
 
     function afficher() {
       if (!clientId) { zone.innerHTML = `<div class="vide">Un programme appartient à un client. <a href="index.html">Ajoute ton premier client</a>, puis reviens ici.</div>`; return; }
@@ -84,8 +101,13 @@
         <div class="barre-outils" style="margin-bottom:16px">
           <label class="champ-inline" style="flex:1">Nom du programme
             <input id="nom-programme" value="${txt(prog.nom)}" style="max-width:360px"></label>
-          <a class="bouton" href="seance.html?client=${clientId}">Commencer une séance</a>
+          <span class="actions">
+            <a class="bouton" href="plan-pdf.html?client=${clientId}">Télécharger en PDF</a>
+          </span>
         </div>
+        ${copie ? `<p class="bandeau-copie">Copié : <b>${txt(resumeCopie(copie))}</b>${copie.source ? ` (de ${txt(copie.source)})` : ""}.
+          Clique sur « Coller » sur un exercice pour appliquer ces valeurs.
+          <button class="petit" data-action="vider-copie">Vider</button></p>` : ""}
         ${prog.entrainements.map((w, i) => carteEntrainement(w, i)).join("")}
         <button class="principal" id="btn-ajout-entrainement">Ajouter un entraînement</button>`;
 
@@ -101,6 +123,8 @@
       <section class="carte entrainement" data-w="${i}">
         <div class="entrainement-tete">
           <input value="${txt(w.nom)}" data-champ="nom-entrainement" aria-label="Nom de l'entraînement">
+          ${copie && w.exercices.length ? `<button class="petit" data-action="coller-partout" style="white-space:nowrap">Coller dans tous</button>` : ""}
+          <a class="bouton principal petit" href="seance.html?client=${clientId}&entrainement=${i}" style="white-space:nowrap">Commencer la séance</a>
           <button class="petit danger" data-action="supprimer-entrainement">Supprimer</button>
         </div>
         <div class="ligne-ex ligne-titres"><span></span><span></span><span>Exercice</span>
@@ -125,6 +149,8 @@
               <button class="icone" data-action="monter" aria-label="Monter">↑</button>
               <button class="icone" data-action="descendre" aria-label="Descendre">↓</button>
               <button class="icone danger" data-action="retirer" aria-label="Retirer">✕</button>
+              <button class="petit mini-bouton" data-action="copier" title="Copier séries, reps, tempo, RIR et repos">Copier</button>
+              <button class="petit mini-bouton" data-action="coller" ${copie ? "" : "disabled"} title="Coller les valeurs copiées">Coller</button>
             </span>
           </div>`;
         }).join("")}
@@ -158,6 +184,7 @@
     zone.addEventListener("click", e => {
       const bouton = e.target.closest("[data-action]");
       if (!bouton) return;
+      if (bouton.dataset.action === "vider-copie") { garderCopie(null); afficher(); return; }
       const prog = programmeDuClient(clientId);
       const carte = bouton.closest("[data-w]");
       const w = prog.entrainements[carte.dataset.w];
@@ -167,6 +194,17 @@
         case "ajouter-exercice":
           w.exercices.push({ exerciceId: "", series: "3", reps: "10-12", tempo: "", rir: "", repos: "", consignes: "" }); break;
         case "retirer": w.exercices.splice(j, 1); break;
+        case "copier": {
+          const x = w.exercices[j];
+          garderCopie({ ...Object.fromEntries(CHAMPS_COPIES.map(c => [c, x[c] ?? ""])), source: trouverExercice(x.exerciceId)?.nom || "" });
+          afficher(); message("Copié"); return;
+        }
+        case "coller":
+          if (!copie) return;
+          collerDans(w.exercices[j]); message("Collé"); break;
+        case "coller-partout":
+          if (!copie || !confirm(`Appliquer « ${resumeCopie(copie)} » à tous les exercices de « ${w.nom} » ?`)) return;
+          w.exercices.forEach(collerDans); message("Collé dans tous les exercices"); break;
         case "monter": if (j > 0) [w.exercices[j - 1], w.exercices[j]] = [w.exercices[j], w.exercices[j - 1]]; break;
         case "descendre": if (j < w.exercices.length - 1) [w.exercices[j + 1], w.exercices[j]] = [w.exercices[j], w.exercices[j + 1]]; break;
         case "supprimer-entrainement":
@@ -182,6 +220,7 @@
 
     selecteurClient(clientId, id => { clientId = id; afficherMenu("programme"); afficher(); });
     afficher();
+    });
   </script>
 </body>
 </html>

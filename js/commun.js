@@ -71,7 +71,30 @@ function blocVideo(url) {
 }
 
 // ---------- Menu du haut (et barre du bas sur téléphone) ----------
+// ---------- Mode client : la page est ouverte avec le lien du client (?code=…) ----------
+const CODE_CLIENT = parametre("code");
+function enModeClient() { return !!CODE_CLIENT; }
+function clientDuLien() { return CODE_CLIENT ? db.clients.find(c => c.code && c.code === CODE_CLIENT) : null; }
+
 function afficherMenu(pageActive) {
+  if (enModeClient()) {
+    // Menu simplifié pour le client : son plan, ses séances, son progrès
+    const code = "?code=" + encodeURIComponent(CODE_CLIENT);
+    document.body.classList.add("mode-client");
+    document.getElementById("menu").innerHTML = `
+      <span class="marque"><span class="disque" aria-hidden="true"></span>Coach<b>Plan</b></span>
+      <nav aria-label="Menu">
+        ${[["client.html", "Mon plan", "plan"], ["seance.html", "Séance", "seance"], ["progression.html", "Mon progrès", "progression"]]
+          .map(([href, nom, cle]) => `<a href="${href}${code}" ${cle === pageActive ? 'aria-current="page"' : ""}>${nom}</a>`).join("")}
+      </nav>`;
+    if (!clientDuLien()) {
+      // Code inconnu : on n'affiche rien d'autre
+      const main = document.querySelector("main");
+      main.querySelectorAll(":scope > *").forEach(el => el.hidden = true);
+      main.insertAdjacentHTML("afterbegin", `<div class="vide">Lien invalide. Demande à ton coach de te renvoyer ton lien.</div>`);
+    }
+    return;
+  }
   const liens = [
     ["index.html", "Clients", "clients"],
     ["exercices.html", "Exercices", "exercices"],
@@ -90,12 +113,15 @@ function afficherMenu(pageActive) {
         const actif = cle === pageActive || (cle === "nutrition" && pageActive === "recettes");
         return `<a href="${href}${avecClient}" ${actif ? 'aria-current="page"' : ""}>${nom}</a>`;
       }).join("")}
-    </nav>`;
+    </nav>
+    <button class="deconnexion" id="btn-deconnexion" type="button">Déconnexion</button>`;
   document.getElementById("menu").innerHTML = html;
+  document.getElementById("btn-deconnexion").onclick = () => Donnees.deconnecter();
 }
 
 // ---------- Choix du client (pages Programme, Séance, Progression) ----------
 function selecteurClient(idActuel, surChangement) {
+  if (enModeClient()) { document.getElementById("choix-client").innerHTML = ""; return; } // le client ne voit que lui-même
   const actifs = db.clients.filter(c => c.actif !== false);
   const options = actifs.map(c => `<option value="${c.id}" ${c.id === idActuel ? "selected" : ""}>${txt(c.nom)}</option>`).join("");
   const conteneur = document.getElementById("choix-client");
@@ -109,6 +135,7 @@ function selecteurClient(idActuel, surChangement) {
   });
 }
 function clientCourant() {
+  if (enModeClient()) return clientDuLien()?.id || null;
   const id = parametre("client");
   if (id && trouverClient(id)) return id;
   const premier = db.clients.find(c => c.actif !== false);

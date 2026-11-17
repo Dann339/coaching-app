@@ -383,3 +383,31 @@ label .champ-unite { margin-top: 4px; }
   .ligne-ex .mini:first-of-type, .ligne-ex .mini:nth-of-type(4) { grid-column: 2 / 4; }
   .ligne-ex .consignes-ex, .ligne-ex .boutons-ligne { grid-column: 2 / 8; }
 }
+.barre-collante { flex-wrap: wrap; align-items: center; }
+.remplacement input { max-width: 420px; }
+
+/* ---------- Mode client (pages ouvertes avec le lien du client) ---------- */
+.mode-client main { max-width: 820px; }
+.mode-client #menu nav a { font-size: 1rem; }
+@media (max-width: 760px) { .mode-client #menu nav a { font-size: .85rem; } }
+.graphique rect.barre { fill: #1f5fbf; }
+.bascule { display: inline-flex; border: 1px solid var(--ligne); border-radius: 8px; overflow: hidden; }
+.bascule button { border: 0; border-radius: 0; min-height: 32px; padding: 4px 12px; font-weight: 500; }
+.bascule button[aria-pressed="true"] { background: var(--caoutchouc); color: #fff; }
+
+/* ---------- Copier / coller (programme) ---------- */
+.boutons-ligne { flex-wrap: wrap; width: 104px; }
+.mini-bouton { min-height: 26px; padding: 2px 6px; font-size: .75rem; width: 50px; justify-content: center; }
+.mini-bouton:disabled { opacity: .4; cursor: default; }
+.bandeau-copie { background: #e7f1fb; border: 1px solid #b9d3f0; border-radius: 8px; padding: 10px 14px; font-size: .9rem; }
+@media (max-width: 760px) { .boutons-ligne { width: auto; } }
+@media (max-width: 760px) {
+  .entrainement-tete { flex-wrap: wrap; }
+  .entrainement-tete input { flex: 1 1 100%; }
+}
+
+/* ---------- En ligne : déconnexion et erreurs ---------- */
+.deconnexion { margin-left: auto; background: transparent; color: #c9d1d8; border-color: rgba(255,255,255,.25); min-height: 34px; }
+.deconnexion:hover { color: #fff; border-color: #fff; }
+.erreur-globale { background: #fbe7e5; color: #8a1f15; border-bottom: 1px solid var(--danger); padding: 12px 16px; font-weight: 600; text-align: center; }
+@media (max-width: 760px) { .deconnexion { min-height: 30px; padding: 2px 10px; font-size: .85rem; } }

@@ -57,10 +57,12 @@
     </form>
   </dialog>
 
-  <script src="js/donnees-depart.js"></script>
+  <script src="js/config.js"></script>
   <script src="js/stockage.js"></script>
   <script src="js/commun.js"></script>
   <script>
+    // La page s'affiche quand les données en ligne sont chargées
+    Donnees.pret.then(() => {
     afficherMenu("recettes");
     afficherSousMenuNutrition("recettes");
     let etiquette = "Toutes";
@@ -152,6 +154,7 @@
       if (t) voir(db.recettes.find(r => r.id === t.dataset.id));
     };
     afficher();
+    });
   </script>
 </body>
 </html>

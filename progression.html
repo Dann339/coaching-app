@@ -14,13 +14,22 @@
   <main>
     <div class="entete">
       <div>
-        <h1>Progression</h1>
+        <h1 id="titre-page">Progression</h1>
         <p class="sous-titre">Calculée automatiquement à partir des séances enregistrées.</p>
       </div>
-      <div class="barre-outils" id="choix-client"></div>
+      <div class="barre-outils">
+        <span id="choix-client"></span>
+        <button class="principal" id="btn-excel">Télécharger en Excel</button>
+      </div>
     </div>
 
     <div class="chiffres" id="chiffres"></div>
+
+    <section class="carte" style="margin-bottom:16px">
+      <h2>Volume total par semaine</h2>
+      <p class="meta">Volume = poids × répétitions, additionné pour toutes les séries de la semaine (lb).</p>
+      <div id="graphique-total"></div>
+    </section>
 
     <div class="deux-colonnes">
       <section class="carte">
@@ -28,7 +37,11 @@
           <h2 style="margin:0" id="titre-exercice">Exercice</h2>
           <select id="select-exercice" aria-label="Choisir un exercice" style="width:auto;max-width:100%"></select>
         </div>
-        <p class="meta">Poids max par semaine (lb)</p>
+        <div class="bascule" role="group" aria-label="Mesure affichée">
+          <button type="button" data-mesure="volume" aria-pressed="true">Volume</button>
+          <button type="button" data-mesure="max" aria-pressed="false">Poids max</button>
+        </div>
+        <p class="meta" id="legende-graphique" style="margin-top:6px">Volume par semaine (lb)</p>
         <div id="graphique"></div>
         <div class="tableau-defile" style="margin-top:12px"><table class="donnees" id="tableau-semaines"></table></div>
         <p class="meta" style="margin-top:8px">Vert : volume en hausse par rapport à la semaine d'avant. Rouge : en baisse.</p>
@@ -41,10 +54,12 @@
     </div>
   </main>
 
-  <script src="js/donnees-depart.js"></script>
+  <script src="js/config.js"></script>
   <script src="js/stockage.js"></script>
   <script src="js/commun.js"></script>
   <script>
+    // La page s'affiche quand les données en ligne sont chargées
+    Donnees.pret.then(() => {
     afficherMenu("progression");
     let clientId = clientCourant();
     const selectEx = document.getElementById("select-exercice");
@@ -65,14 +80,17 @@
     }
 
     // Petit graphique en ligne, dessiné en SVG (pas de bibliothèque à installer)
-    function dessinerGraphique(semaines) {
+    let mesure = "volume"; // "volume" ou "max"
+    function dessinerGraphique(semainesBrutes) {
       const zone = document.getElementById("graphique");
+      const semaines = semainesBrutes.map(s => ({ lundi: s.lundi, max: s[mesure] }));
       if (semaines.length < 2) { zone.innerHTML = `<p class="meta">Il faut au moins 2 semaines pour tracer la courbe.</p>`; return; }
       const L = 640, H = 220, m = { g: 40, d: 16, h: 16, b: 28 };
       const valeurs = semaines.map(s => s.max);
       const min = Math.min(...valeurs), max = Math.max(...valeurs);
-      const bas = Math.max(0, Math.floor((min - (max - min || 10) * 0.3) / 5) * 5);
-      const haut = Math.ceil((max + (max - min || 10) * 0.2) / 5) * 5;
+      const pas = max > 2000 ? 500 : max > 200 ? 50 : 5;
+      const bas = Math.max(0, Math.floor((min - (max - min || 10) * 0.3) / pas) * pas);
+      const haut = Math.ceil((max + (max - min || 10) * 0.2) / pas) * pas;
       const x = i => m.g + i * (L - m.g - m.d) / (semaines.length - 1);
       const y = v => m.h + (H - m.h - m.b) * (1 - (v - bas) / (haut - bas));
       const graduations = [bas, (bas + haut) / 2, haut];
@@ -85,6 +103,34 @@
           ${semaines.map((s, i) => `<circle cx="${x(i)}" cy="${y(s.max)}" r="4" fill="#1f5fbf"><title>${dateLisible(s.lundi)} : ${nombre(s.max)} lb</title></circle>`).join("")}
           ${semaines.map((s, i) => (i % Math.ceil(semaines.length / 8) === 0 || i === semaines.length - 1)
             ? `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${new Date(s.lundi + "T12:00").toLocaleDateString("fr-CA", { day: "numeric", month: "short" })}</text>` : "").join("")}
+        </svg>`;
+    }
+
+    // Barres : volume total de toutes les séances, par semaine
+    function dessinerTotal() {
+      const zone = document.getElementById("graphique-total");
+      const parSemaine = {};
+      for (const s of seancesDuClient(clientId)) {
+        const lundi = lundiDe(s.date);
+        parSemaine[lundi] = (parSemaine[lundi] || 0) + s.exercices.reduce((t, x) => t + volume(x.series), 0);
+      }
+      const semaines = Object.entries(parSemaine).sort((a, b) => a[0].localeCompare(b[0])).slice(-16);
+      if (!semaines.length) { zone.innerHTML = `<div class="vide">Enregistre une séance pour voir ton volume.</div>`; return; }
+      const L = 640, H = 200, m = { g: 52, d: 10, h: 18, b: 28 };
+      const max = Math.max(...semaines.map(([, v]) => v)) || 1;
+      const pas = max > 20000 ? 5000 : max > 2000 ? 1000 : 100;
+      const haut = Math.ceil(max / pas) * pas;
+      const largeur = (L - m.g - m.d) / semaines.length;
+      const y = v => m.h + (H - m.h - m.b) * (1 - v / haut);
+      zone.innerHTML = `
+        <svg class="graphique" viewBox="0 0 ${L} ${H}" role="img" aria-label="Volume total par semaine">
+          ${[0, haut / 2, haut].map(g => `<line x1="${m.g}" x2="${L - m.d}" y1="${y(g)}" y2="${y(g)}" stroke="#d8dcdf"/>
+            <text x="${m.g - 6}" y="${y(g) + 4}" text-anchor="end">${nombre(g)}</text>`).join("")}
+          ${semaines.map(([lundi, v], i) => `
+            <rect class="barre" x="${m.g + i * largeur + largeur * 0.15}" y="${y(v)}" width="${largeur * 0.7}" height="${Math.max(0, y(0) - y(v))}" rx="3">
+              <title>Semaine du ${dateLisible(lundi)} : ${nombre(v)} lb</title></rect>
+            ${(i % Math.ceil(semaines.length / 8) === 0 || i === semaines.length - 1)
+              ? `<text x="${m.g + (i + 0.5) * largeur}" y="${H - 8}" text-anchor="middle">${new Date(lundi + "T12:00").toLocaleDateString("fr-CA", { day: "numeric", month: "short" })}</text>` : ""}`).join("")}
         </svg>`;
     }
 
@@ -104,6 +150,7 @@
     }
 
     function afficher() {
+      dessinerTotal();
       const seances = seancesDuClient(clientId);
       const mois = aujourdhui().slice(0, 7);
       const ceMois = seances.filter(s => s.date.startsWith(mois));
@@ -144,10 +191,133 @@
     }
 
     selectEx.onchange = afficherExercice;
+    document.querySelector(".bascule").onclick = e => {
+      const b = e.target.closest("[data-mesure]"); if (!b) return;
+      mesure = b.dataset.mesure;
+      document.querySelectorAll("[data-mesure]").forEach(x => x.setAttribute("aria-pressed", x === b));
+      document.getElementById("legende-graphique").textContent = mesure === "volume" ? "Volume par semaine (lb)" : "Poids max par semaine (lb)";
+      afficherExercice();
+    };
+    if (enModeClient()) {
+      document.getElementById("titre-page").textContent = "Mon progrès";
+      document.title = "Mon progrès";
+    }
+
+    // ---------- Export Excel (.xlsx) ----------
+    // La bibliothèque SheetJS est chargée seulement au moment du clic.
+    function chargerSheetJS() {
+      if (window.XLSX) return Promise.resolve();
+      return new Promise((ok, erreur) => {
+        const script = document.createElement("script");
+        script.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+        script.onload = ok;
+        script.onerror = () => erreur(new Error("Connexion internet requise pour créer le fichier Excel."));
+        document.head.appendChild(script);
+      });
+    }
+
+    function feuille(lignes, largeurs) {
+      const f = XLSX.utils.aoa_to_sheet(lignes, { dateNF: "yyyy-mm-dd" });
+      f["!cols"] = largeurs.map(w => ({ wch: w }));
+      if (lignes.length > 1) f["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: lignes.length - 1, c: lignes[0].length - 1 } }) };
+      return f;
+    }
+
+    async function exporterExcel() {
+      const client = trouverClient(clientId);
+      if (!client) return;
+      const bouton = document.getElementById("btn-excel");
+      bouton.disabled = true; bouton.textContent = "Préparation…";
+      try {
+        await chargerSheetJS();
+        const seances = seancesDuClient(clientId).slice().reverse(); // plus ancienne en premier
+        const date = iso => new Date(iso + "T12:00:00");
+        const jour = iso => date(iso).toLocaleDateString("fr-CA", { weekday: "short" });
+        const nomEx = id => trouverExercice(id)?.nom || "Exercice supprimé";
+        const catEx = id => trouverExercice(id)?.categorie || "";
+        const valeur = v => (v === null || v === undefined || v === "") ? "" : Number(v);
+
+        // 1. Journal : une ligne par exercice, comme l'onglet Journal de ton Excel
+        const nbSeries = Math.max(4, ...seances.flatMap(s => s.exercices.map(x => x.series.length)));
+        const journal = [["Date", "Jour", "Entraînement", "Exercice", "Catégorie",
+          ...Array.from({ length: nbSeries }, (_, i) => `Poids S${i + 1} (lb)`),
+          ...Array.from({ length: nbSeries }, (_, i) => `Reps S${i + 1}`),
+          "Poids max (lb)", "Volume (lb)"]];
+        for (const s of seances) for (const x of s.exercices) {
+          journal.push([date(s.date), jour(s.date), s.entrainement, nomEx(x.exerciceId), catEx(x.exerciceId),
+            ...Array.from({ length: nbSeries }, (_, i) => valeur(x.series[i]?.poids)),
+            ...Array.from({ length: nbSeries }, (_, i) => valeur(x.series[i]?.reps)),
+            poidsMax(x.series) || "", volume(x.series) || ""]);
+        }
+
+        // 2. Séances : une ligne par séance
+        const listeSeances = [["Date", "Jour", "Entraînement", "Exercices", "Volume (lb)", "Cardio (min)", "Notes"]];
+        for (const s of seances) listeSeances.push([date(s.date), jour(s.date), s.entrainement, s.exercices.length,
+          s.exercices.reduce((t, x) => t + volume(x.series), 0),
+          s.cardio.reduce((t, c) => t + (Number(c.minutes) || 0), 0), s.notes || ""]);
+
+        // 3. Progression : poids max et volume par semaine, pour chaque exercice
+        const progression = [["Exercice", "Catégorie", "Semaine du", "Poids max (lb)", "Volume (lb)", "Volume vs sem. précédente"]];
+        const ids = [...new Set(seances.flatMap(s => s.exercices.map(x => x.exerciceId)))];
+        for (const id of ids) {
+          let avant = null;
+          for (const sem of semainesPour(id)) {
+            const diff = avant === null ? "" : sem.volume > avant ? "Hausse" : sem.volume < avant ? "Baisse" : "Stable";
+            progression.push([nomEx(id), catEx(id), date(sem.lundi), sem.max, sem.volume, diff]);
+            avant = sem.volume;
+          }
+        }
+
+        // 4. Records personnels
+        const meilleurs = {};
+        for (const s of seances) for (const x of s.exercices) {
+          const p = poidsMax(x.series);
+          if (p > 0 && (!meilleurs[x.exerciceId] || p > meilleurs[x.exerciceId].poids)) meilleurs[x.exerciceId] = { poids: p, date: s.date };
+        }
+        const records = [["Rang", "Exercice", "Poids max (lb)", "Date"],
+          ...Object.entries(meilleurs).sort((a, b) => b[1].poids - a[1].poids)
+            .map(([id, r], i) => [i + 1, nomEx(id), r.poids, date(r.date)])];
+
+        // 5. Cardio
+        const cardio = [["Date", "Entraînement", "Activité", "Minutes"]];
+        for (const s of seances) for (const c of s.cardio) cardio.push([date(s.date), s.entrainement, c.activite, Number(c.minutes) || 0]);
+
+        // 6. Résumé
+        const totalVolume = listeSeances.slice(1).reduce((t, l) => t + l[4], 0);
+        const resume = [
+          ["Client", client.nom],
+          ["Exporté le", date(aujourdhui())],
+          ["Première séance", seances[0] ? date(seances[0].date) : ""],
+          ["Dernière séance", seances.length ? date(seances[seances.length - 1].date) : ""],
+          ["Nombre de séances", seances.length],
+          ["Volume total (lb)", totalVolume],
+          ["Cardio total (min)", cardio.slice(1).reduce((t, l) => t + l[3], 0)],
+        ];
+
+        const classeur = XLSX.utils.book_new();
+        const fResume = XLSX.utils.aoa_to_sheet(resume, { dateNF: "yyyy-mm-dd" }); fResume["!cols"] = [{ wch: 22 }, { wch: 28 }];
+        XLSX.utils.book_append_sheet(classeur, fResume, "Résumé");
+        XLSX.utils.book_append_sheet(classeur, feuille(listeSeances, [12, 6, 30, 10, 12, 12, 40]), "Séances");
+        XLSX.utils.book_append_sheet(classeur, feuille(journal, [12, 6, 30, 30, 16, ...Array(nbSeries * 2).fill(11), 13, 12]), "Journal");
+        XLSX.utils.book_append_sheet(classeur, feuille(progression, [30, 16, 12, 13, 12, 22]), "Progression");
+        XLSX.utils.book_append_sheet(classeur, feuille(records, [6, 30, 14, 12]), "Records");
+        XLSX.utils.book_append_sheet(classeur, feuille(cardio, [12, 30, 20, 10]), "Cardio");
+
+        const nomFichier = `Progression - ${client.nom} - ${aujourdhui()}.xlsx`.replace(/[\\/:*?"<>|]/g, "");
+        XLSX.writeFile(classeur, nomFichier, { cellDates: true });
+        message("Fichier Excel téléchargé");
+      } catch (e) {
+        alert(e.message);
+      } finally {
+        bouton.disabled = false; bouton.textContent = "Télécharger en Excel";
+      }
+    }
+    document.getElementById("btn-excel").onclick = exporterExcel;
     if (clientId) {
       selecteurClient(clientId, id => { clientId = id; afficherMenu("progression"); afficher(); });
       afficher();
     }
+    });
   </script>
 </body>
 </html>

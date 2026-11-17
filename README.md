@@ -23,6 +23,7 @@ Un nouveau programme a la même structure que ton Excel : 4 entraînements (à r
 | `nutrition.html` | Plans nutritionnels : objectifs de macros par client, recettes suggérées |
 | `recettes.html` | Recettes avec vidéo (sous-section de Nutrition) |
 | `client.html` | Ce que le client voit (lecture seule) |
+| `plan-pdf.html` | Version PDF du plan (entraînements, nutrition, recettes) |
 
 ## Les autres fichiers
 
@@ -31,20 +32,18 @@ Un nouveau programme a la même structure que ton Excel : 4 entraînements (à r
 | `css/style.css` | Couleurs, polices, mise en page (les couleurs sont en haut) |
 | `js/commun.js` | Outils partagés : menu, vidéos, calcul du volume |
 | `js/stockage.js` | Où les données sont gardées |
-| `js/donnees-depart.js` | La bibliothèque d'exercices de départ |
+| `js/donnees-depart.js` | La bibliothèque d'exercices de départ (déjà copiée dans supabase.sql) |
+| `js/config.js` | Connexion à Supabase |
 
-## Important : données dans le navigateur
+## Données en ligne (Supabase)
 
-Pour l'instant, les données sont gardées **dans ton navigateur seulement**.
-Si tu vides l'historique du navigateur, tes ajouts disparaissent.
-Le lien client ne fonctionne que sur ton ordinateur.
+Les données sont gardées en ligne dans Supabase (projet `gjklwefaldmhbgmpqkgk`).
 
-**Prochaine étape (semaine 1 du plan) :** brancher Supabase pour garder les données en ligne.
-Demande à Claude dans VS Code :
-
-> Remplace js/stockage.js pour utiliser Supabase au lieu de localStorage, en gardant les mêmes
-> fonctions pour que les pages continuent de marcher. Ajoute une page de connexion pour que
-> seulement moi puisse modifier les données. Explique-moi chaque étape à faire dans Supabase.
+- `js/config.js` : adresse du projet et clé publishable (jamais la clé secrète).
+- `supabase.sql` : à coller une fois dans Supabase > SQL Editor (tables, sécurité, exercices de départ).
+- `connexion.html` : connexion du coach (compte créé dans Supabase > Authentication > Users).
+- Le client n'a pas de compte : son lien (`client.html?code=…`) lui donne accès à SES données seulement.
+- `js/stockage.js` envoie à Supabase seulement ce qui change (un client, une séance, un plan…).
 
 ## Ajouter une vidéo
 
