@@ -32,7 +32,7 @@
       const retour = parametre("retour") || "index.html";
       // Déjà connecté : on va directement à l'app
       const { data: { session } } = await sb.auth.getSession();
-      const sur = /^[a-z-]+\.html(\?.*)?$/.test(retour) ? retour : "index.html";
+      const sur = /^[a-z-]+(\.html)?(\?.*)?$/.test(retour) && !retour.startsWith("connexion") ? retour : "index.html";
       if (session) { location.href = sur; return; }
 
       const form = document.getElementById("form-connexion");

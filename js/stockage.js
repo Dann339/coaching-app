@@ -30,7 +30,8 @@ let fileEnvoi = Promise.resolve();
 let envoisEnCours = 0;
 
 const codeDuLien = new URLSearchParams(location.search).get("code");
-const pageConnexion = location.pathname.endsWith("connexion.html");
+// Cloudflare peut afficher les pages sans « .html » (ex. /connexion) : on accepte les deux
+const pageConnexion = /\/connexion(\.html)?$/.test(location.pathname);
 
 function chargerScript(src) {
   return new Promise((ok, erreur) => {
