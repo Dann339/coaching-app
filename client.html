@@ -34,8 +34,6 @@
       const plan = plans.find(p => p.debut <= aujourdhui()) || plans[0];
       const recettesClient = plan?.recettes?.length ? db.recettes.filter(r => plan.recettes.includes(r.id)) : db.recettes;
       contenu.innerHTML = `
-        <p class="bandeau-demo">Aperçu : pour l'instant, les séances sont gardées dans ce navigateur seulement.
-          Une fois Supabase branché, ton coach verra tes séances en temps réel.</p>
         <h1>Bonjour ${txt(client.nom.split(" ")[0])}</h1>
         <p class="sous-titre">${txt(client.objectifs)}</p>
         <div class="actions" style="margin:12px 0 20px">
