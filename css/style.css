@@ -411,3 +411,7 @@ label .champ-unite { margin-top: 4px; }
 .deconnexion:hover { color: #fff; border-color: #fff; }
 .erreur-globale { background: #fbe7e5; color: #8a1f15; border-bottom: 1px solid var(--danger); padding: 12px 16px; font-weight: 600; text-align: center; }
 @media (max-width: 760px) { .deconnexion { min-height: 30px; padding: 2px 10px; font-size: .85rem; } }
+
+/* Barre « Appliquer au programme / Enregistrer » : fixe en bas de la séance, après le cardio (ne suit plus le défilement) */
+.barre-collante, .mode-client .barre-collante { position: static; bottom: auto; margin-top: 4px; padding: 16px 0 8px; }
+@media (max-width: 760px) { .barre-collante { bottom: auto; } }
