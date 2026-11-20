@@ -84,8 +84,9 @@ function afficherMenu(pageActive) {
     document.getElementById("menu").innerHTML = `
       <span class="marque"><span class="disque" aria-hidden="true"></span>Coach<b>Plan</b></span>
       <nav aria-label="Menu">
-        ${[["client.html", "Mon plan", "plan"], ["seance.html", "Séance", "seance"], ["progression.html", "Mon progrès", "progression"]]
-          .map(([href, nom, cle]) => `<a href="${href}${code}" ${cle === pageActive ? 'aria-current="page"' : ""}>${nom}</a>`).join("")}
+        ${[["client.html", "Mon plan", "plan"], ["seance.html", "Séance", "seance"], ["progression.html", "Mon progrès", "progression"],
+           ["client.html", "Nutrition", "nutrition", "&vue=nutrition"]]
+          .map(([href, nom, cle, suite = ""]) => `<a href="${href}${code}${suite}" ${cle === pageActive ? 'aria-current="page"' : ""}>${nom}</a>`).join("")}
       </nav>`;
     if (!clientDuLien()) {
       // Code inconnu : on n'affiche rien d'autre

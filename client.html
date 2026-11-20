@@ -22,7 +22,9 @@
     Donnees.pret.then(() => {
     const contenu = document.getElementById("contenu");
     const client = clientDuLien();
-    if (client) afficherMenu("plan");
+    // Deux vues : « Mon plan » (entraînements) et « Nutrition » (plan nutritionnel + recettes)
+    const vueNutrition = parametre("vue") === "nutrition";
+    if (client) afficherMenu(vueNutrition ? "nutrition" : "plan");
 
     if (!client) {
       contenu.innerHTML = `<div class="vide">Lien invalide. Demande à ton coach de te renvoyer ton lien.</div>`;
@@ -33,6 +35,46 @@
       const plans = db.plansNutrition.filter(p => p.clientId === client.id).sort((a, b) => b.debut.localeCompare(a.debut));
       const plan = plans.find(p => p.debut <= aujourdhui()) || plans[0];
       const recettesClient = plan?.recettes?.length ? db.recettes.filter(r => plan.recettes.includes(r.id)) : db.recettes;
+      // ---------- Vue Nutrition ----------
+      function htmlPlanNutrition() {
+        if (!plan) return `<div class="vide">Ton coach n'a pas encore créé ton plan nutritionnel.</div>`;
+        const ligne = (m, unite) => {
+          const q = quantiteReelle(plan.objectifs[m.cle], plan.poids);
+          return q ? `<tr><td>${m.nom}</td><td>${nombre(q)} ${unite}</td></tr>` : "";
+        };
+        return `
+          <section class="carte">
+            <h2>${txt(plan.nom)}</h2>
+            <p class="meta">À partir du ${dateLisible(plan.debut)}, pendant ${plan.semaines} semaines. Objectifs par jour.</p>
+            <table class="donnees">${MACROS.map(m => ligne(m, m.cle === "calories" ? "kcal" : "g")).join("")}</table>
+            ${plan.notes ? `<p style="margin-top:12px;white-space:pre-line">${txt(plan.notes)}</p>` : ""}
+          </section>`;
+      }
+      function htmlRecettes() {
+        if (!recettesClient.length) return `<div class="vide">Aucune recette pour l'instant.</div>`;
+        return recettesClient.map(r => `
+          <details class="carte" style="margin-bottom:10px">
+            <summary><strong style="font-family:var(--titres);font-size:1.3rem">${txt(r.titre)}</strong></summary>
+            <div class="recette-detail">
+              <div class="macros"><span><b>${r.calories || 0}</b> cal</span><span><b>${r.proteines || 0}</b> g prot.</span>
+                <span><b>${r.glucides || 0}</b> g gluc.</span><span><b>${r.lipides || 0}</b> g lip.</span></div>
+              ${blocVideo(r.video)}
+              <ul>${(r.ingredients || []).map(i => `<li>${txt(i)}</li>`).join("")}</ul>
+              <ol>${(r.etapes || []).map(e => `<li>${txt(e)}</li>`).join("")}</ol>
+            </div>
+          </details>`).join("");
+      }
+      if (vueNutrition) {
+        document.title = "Ma nutrition";
+        contenu.innerHTML = `
+          <h1>Nutrition</h1>
+          ${htmlPlanNutrition()}
+          <h2 style="margin-top:28px">Recettes</h2>
+          ${htmlRecettes()}`;
+        return;
+      }
+
+      // ---------- Vue Mon plan (entraînements) ----------
       contenu.innerHTML = `
         <h1>Bonjour ${txt(client.nom.split(" ")[0])}</h1>
         <p class="sous-titre">${txt(client.objectifs)}</p>
@@ -44,42 +86,12 @@
 
         <div class="filtres" role="tablist">
           ${(prog?.entrainements || []).map((w, i) => `<button role="tab" aria-pressed="${i === 0}" data-w="${i}">${txt(w.nom.split("—")[0].trim())}</button>`).join("")}
-          ${plan ? `<button role="tab" aria-pressed="false" data-w="nutrition">Nutrition</button>` : ""}
-          <button role="tab" aria-pressed="false" data-w="recettes">Recettes</button>
         </div>
         <div id="onglet"></div>`;
 
       function montrer(cle) {
         document.querySelectorAll("[data-w]").forEach(b => b.setAttribute("aria-pressed", b.dataset.w === String(cle)));
         const zone = document.getElementById("onglet");
-        if (cle === "nutrition") {
-          const ligne = (m, unite) => {
-            const q = quantiteReelle(plan.objectifs[m.cle], plan.poids);
-            return q ? `<tr><td>${m.nom}</td><td>${nombre(q)} ${unite}</td></tr>` : "";
-          };
-          zone.innerHTML = `
-            <section class="carte">
-              <h2>${txt(plan.nom)}</h2>
-              <p class="meta">À partir du ${dateLisible(plan.debut)}, pendant ${plan.semaines} semaines</p>
-              <table class="donnees">${MACROS.map(m => ligne(m, m.cle === "calories" ? "kcal" : "g")).join("")}</table>
-              ${plan.notes ? `<p style="margin-top:12px;white-space:pre-line">${txt(plan.notes)}</p>` : ""}
-            </section>`;
-          return;
-        }
-        if (cle === "recettes") {
-          zone.innerHTML = recettesClient.length ? "" : `<div class="vide">Aucune recette pour l'instant.</div>`;
-          zone.innerHTML += recettesClient.map(r => `
-            <details class="carte" style="margin-bottom:10px">
-              <summary><strong style="font-family:var(--titres);font-size:1.3rem">${txt(r.titre)}</strong></summary>
-              <div class="recette-detail">
-                <div class="macros"><span><b>${r.calories}</b> cal</span><span><b>${r.proteines}</b> g prot.</span></div>
-                ${blocVideo(r.video)}
-                <ul>${r.ingredients.map(i => `<li>${txt(i)}</li>`).join("")}</ul>
-                <ol>${r.etapes.map(e => `<li>${txt(e)}</li>`).join("")}</ol>
-              </div>
-            </details>`).join("");
-          return;
-        }
         const w = prog.entrainements[cle];
         zone.innerHTML = `
           <div class="barre-outils" style="justify-content:space-between;margin-bottom:12px">
@@ -107,14 +119,15 @@
 
       document.querySelector(".filtres").onclick = e => {
         const b = e.target.closest("[data-w]");
-        if (b) montrer(["recettes", "nutrition"].includes(b.dataset.w) ? b.dataset.w : Number(b.dataset.w));
+        if (b) montrer(Number(b.dataset.w));
       };
       if (!prog?.entrainements.length) {
         document.getElementById("onglet").insertAdjacentHTML("beforebegin",
           `<p class="vide" style="margin-bottom:16px">Pas encore de programme. Clique sur « Commencer une séance » pour noter une séance libre :
             tu choisis tes exercices, puis tu notes le poids et les répétitions de chaque série.</p>`);
       }
-      montrer(prog && prog.entrainements.length ? 0 : plan ? "nutrition" : "recettes");
+      if (prog?.entrainements.length) montrer(0);
+      else document.querySelector(".filtres").hidden = true;
     }
     });
   </script>
