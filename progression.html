@@ -40,6 +40,7 @@
         <div class="bascule" role="group" aria-label="Mesure affichée">
           <button type="button" data-mesure="volume" aria-pressed="true">Volume</button>
           <button type="button" data-mesure="max" aria-pressed="false">Poids max</button>
+          <button type="button" data-mesure="temps" aria-pressed="false" hidden>Temps max</button>
         </div>
         <p class="meta" id="legende-graphique" style="margin-top:6px">Volume par semaine (lb)</p>
         <div id="graphique"></div>
@@ -71,8 +72,9 @@
         for (const x of s.exercices) {
           if (x.exerciceId !== exerciceId) continue;
           const lundi = lundiDe(s.date);
-          const sem = parSemaine[lundi] ||= { lundi, max: 0, volume: 0 };
+          const sem = parSemaine[lundi] ||= { lundi, max: 0, volume: 0, temps: 0 };
           sem.max = Math.max(sem.max, poidsMax(x.series));
+          sem.temps = Math.max(sem.temps, tempsMax(x.series));
           sem.volume += volume(x.series);
         }
       }
@@ -100,7 +102,7 @@
           ${graduations.map(g => `<line x1="${m.g}" x2="${L - m.d}" y1="${y(g)}" y2="${y(g)}" stroke="#d8dcdf"/>
             <text x="${m.g - 6}" y="${y(g) + 4}" text-anchor="end">${nombre(g)}</text>`).join("")}
           <polyline points="${points}" fill="none" stroke="#1f5fbf" stroke-width="2.5" stroke-linejoin="round"/>
-          ${semaines.map((s, i) => `<circle cx="${x(i)}" cy="${y(s.max)}" r="4" fill="#1f5fbf"><title>${dateLisible(s.lundi)} : ${nombre(s.max)} lb</title></circle>`).join("")}
+          ${semaines.map((s, i) => `<circle cx="${x(i)}" cy="${y(s.max)}" r="4" fill="#1f5fbf"><title>${dateLisible(s.lundi)} : ${nombre(s.max)} ${mesure === "temps" ? "s" : "lb"}</title></circle>`).join("")}
           ${semaines.map((s, i) => (i % Math.ceil(semaines.length / 8) === 0 || i === semaines.length - 1)
             ? `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${new Date(s.lundi + "T12:00").toLocaleDateString("fr-CA", { day: "numeric", month: "short" })}</text>` : "").join("")}
         </svg>`;
@@ -139,13 +141,18 @@
       if (!ex) return;
       document.getElementById("titre-exercice").textContent = ex.nom;
       const semaines = semainesPour(ex.id);
+      // Exercice mesuré en temps : on propose « Temps max »
+      const avecTemps = semaines.some(s => s.temps > 0);
+      const boutonTemps = document.querySelector('[data-mesure="temps"]');
+      boutonTemps.hidden = !avecTemps;
+      if (!avecTemps && mesure === "temps") document.querySelector('[data-mesure="volume"]').click();
       dessinerGraphique(semaines);
       document.getElementById("tableau-semaines").innerHTML = `
-        <thead><tr><th>Semaine du</th><th>Poids max (lb)</th><th>Volume (lb)</th></tr></thead>
+        <thead><tr><th>Semaine du</th><th>Poids max (lb)</th><th>Volume (lb)</th>${avecTemps ? "<th>Temps max (s)</th>" : ""}</tr></thead>
         <tbody>${semaines.slice().reverse().map((s, i, arr) => {
           const avant = arr[i + 1];
           const classe = !avant ? "" : s.volume > avant.volume ? "hausse" : s.volume < avant.volume ? "baisse" : "";
-          return `<tr><td>${dateLisible(s.lundi)}</td><td>${nombre(s.max)}</td><td class="${classe}">${nombre(s.volume)}</td></tr>`;
+          return `<tr><td>${dateLisible(s.lundi)}</td><td>${nombre(s.max)}</td><td class="${classe}">${nombre(s.volume)}</td>${avecTemps ? `<td>${nombre(s.temps)}</td>` : ""}</tr>`;
         }).join("")}</tbody>`;
     }
 
@@ -168,7 +175,7 @@
       const ids = [];
       prog?.entrainements.forEach(w => w.exercices.forEach(x => !ids.includes(x.exerciceId) && ids.push(x.exerciceId)));
       seances.forEach(s => s.exercices.forEach(x => !ids.includes(x.exerciceId) && ids.push(x.exerciceId)));
-      const faits = ids.filter(id => trouverExercice(id) && semainesPour(id).some(s => s.max > 0));
+      const faits = ids.filter(id => trouverExercice(id) && semainesPour(id).some(s => s.max > 0 || s.temps > 0 || s.volume > 0));
       selectEx.innerHTML = faits.map(id => `<option value="${id}">${txt(trouverExercice(id).nom)}</option>`).join("");
       if (faits.length) afficherExercice();
       else {
@@ -195,7 +202,8 @@
       const b = e.target.closest("[data-mesure]"); if (!b) return;
       mesure = b.dataset.mesure;
       document.querySelectorAll("[data-mesure]").forEach(x => x.setAttribute("aria-pressed", x === b));
-      document.getElementById("legende-graphique").textContent = mesure === "volume" ? "Volume par semaine (lb)" : "Poids max par semaine (lb)";
+      document.getElementById("legende-graphique").textContent =
+        { volume: "Volume par semaine (lb)", max: "Poids max par semaine (lb)", temps: "Temps max par semaine (secondes)" }[mesure];
       afficherExercice();
     };
     if (enModeClient()) {
@@ -238,20 +246,23 @@
         const valeur = v => (v === null || v === undefined || v === "") ? "" : Number(v);
 
         // 1. Journal : une ligne par exercice, comme l'onglet Journal de ton Excel
+        const avecTempsExcel = seances.some(s => s.exercices.some(x => x.series.some(r => r.temps != null)));
         const nbSeries = Math.max(4, ...seances.flatMap(s => s.exercices.map(x => x.series.length)));
         const journal = [["Date", "Jour", "Entraînement", "Exercice", "Catégorie",
           ...Array.from({ length: nbSeries }, (_, i) => `Poids S${i + 1} (lb)`),
           ...Array.from({ length: nbSeries }, (_, i) => `Reps S${i + 1}`),
-          "Poids max (lb)", "Volume (lb)"]];
+          ...(avecTempsExcel ? Array.from({ length: nbSeries }, (_, i) => `Temps S${i + 1} (s)`) : []),
+          "Poids max (lb)", "Volume (lb)", "Commentaire"]];
         for (const s of seances) for (const x of s.exercices) {
           journal.push([date(s.date), jour(s.date), s.entrainement, nomEx(x.exerciceId), catEx(x.exerciceId),
             ...Array.from({ length: nbSeries }, (_, i) => valeur(x.series[i]?.poids)),
             ...Array.from({ length: nbSeries }, (_, i) => valeur(x.series[i]?.reps)),
-            poidsMax(x.series) || "", volume(x.series) || ""]);
+            ...(avecTempsExcel ? Array.from({ length: nbSeries }, (_, i) => valeur(x.series[i]?.temps)) : []),
+            poidsMax(x.series) || "", volume(x.series) || "", x.commentaire || ""]);
         }
 
         // 2. Séances : une ligne par séance
-        const listeSeances = [["Date", "Jour", "Entraînement", "Exercices", "Volume (lb)", "Cardio (min)", "Notes"]];
+        const listeSeances = [["Date", "Jour", "Entraînement", "Exercices", "Volume (lb)", "Cardio (min)", "Commentaires"]];
         for (const s of seances) listeSeances.push([date(s.date), jour(s.date), s.entrainement, s.exercices.length,
           s.exercices.reduce((t, x) => t + volume(x.series), 0),
           s.cardio.reduce((t, c) => t + (Number(c.minutes) || 0), 0), s.notes || ""]);
@@ -298,7 +309,7 @@
         const fResume = XLSX.utils.aoa_to_sheet(resume, { dateNF: "yyyy-mm-dd" }); fResume["!cols"] = [{ wch: 22 }, { wch: 28 }];
         XLSX.utils.book_append_sheet(classeur, fResume, "Résumé");
         XLSX.utils.book_append_sheet(classeur, feuille(listeSeances, [12, 6, 30, 10, 12, 12, 40]), "Séances");
-        XLSX.utils.book_append_sheet(classeur, feuille(journal, [12, 6, 30, 30, 16, ...Array(nbSeries * 2).fill(11), 13, 12]), "Journal");
+        XLSX.utils.book_append_sheet(classeur, feuille(journal, [12, 6, 30, 30, 16, ...Array(nbSeries * (avecTempsExcel ? 3 : 2)).fill(11), 13, 12, 40]), "Journal");
         XLSX.utils.book_append_sheet(classeur, feuille(progression, [30, 16, 12, 13, 12, 22]), "Progression");
         XLSX.utils.book_append_sheet(classeur, feuille(records, [6, 30, 14, 12]), "Records");
         XLSX.utils.book_append_sheet(classeur, feuille(cardio, [12, 30, 20, 10]), "Cardio");

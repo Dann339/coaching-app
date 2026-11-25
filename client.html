@@ -106,7 +106,7 @@
               ${ex.image ? `<img src="${txt(ex.image)}" alt="">` : ""}
               <div style="flex:1">
                 <h3 style="margin:0">${i + 1}. ${txt(ex.nom)}</h3>
-                <div class="cible">${txt(x.series)} × ${txt(x.reps)}</div>
+                <div class="cible">${cibleTexte(x)}</div>
                 ${detailsExercice(x)}
                 ${x.consignes ? `<p class="consigne">${txt(x.consignes)}</p>` : ""}
                 ${ex.consignes ? `<p class="consigne">${txt(ex.consignes)}</p>` : ""}

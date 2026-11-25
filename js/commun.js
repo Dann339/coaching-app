@@ -192,3 +192,21 @@ function detailsExercice(x) {
   if (x.repos) morceaux.push(`Repos ${txt(x.repos)}`);
   return morceaux.length ? `<p class="details-ex">${morceaux.map(m => `<span>${m}</span>`).join("")}</p>` : "";
 }
+
+// ---------- Séries en répétitions ou en temps ----------
+// Un exercice peut se mesurer en répétitions (mode "reps", par défaut) ou en temps (mode "temps", en secondes).
+function estEnTemps(x) { return x?.mode === "temps"; }
+// Cible lisible : « 3 × 10-12 » ou « 3 × 45 s »
+function cibleTexte(x) {
+  const reps = String(x?.reps ?? "");
+  const unite = estEnTemps(x) && /^\d+(\s*-\s*\d+)?$/.test(reps.trim()) ? " s" : "";
+  return `${txt(x?.series ?? "")} × ${txt(reps)}${unite}`;
+}
+// Une série notée : « 100 × 10 » ou « 100 lb, 45 s »
+function serieTexte(s) {
+  if (!s) return "";
+  const poids = s.poids != null ? nombre(s.poids) : "—";
+  if (s.temps != null) return s.poids != null ? `${poids} lb, ${nombre(s.temps)} s` : `${nombre(s.temps)} s`;
+  return `${poids} × ${s.reps ?? "—"}`;
+}
+function tempsMax(series) { return series.reduce((m, s) => Math.max(m, Number(s.temps) || 0), 0); }

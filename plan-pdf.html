@@ -136,7 +136,8 @@
     // Deuxième photo (position finale) quand l'image vient de free-exercise-db
     function photos(ex) {
       if (!ex.image) return "";
-      const fin = ex.image.includes("free-exercise-db") ? ex.image.replace(/\/0\.jpg$/, "/1.jpg") : null;
+      // Photo de fin : celle ajoutée par le coach, sinon la 2e photo de free-exercise-db
+      const fin = ex.image2 || (ex.image.includes("free-exercise-db") ? ex.image.replace(/\/0\.jpg$/, "/1.jpg") : null);
       return `<div class="ex-photos"><img src="${txt(ex.image)}" alt="">${fin && fin !== ex.image ? `<img src="${txt(fin)}" alt="">` : ""}</div>`;
     }
 
@@ -165,7 +166,7 @@
               <div class="ex-texte">
                 ${ex.consignes ? `<p>- ${txt(ex.consignes)}</p>` : ""}
                 ${x.consignes ? `<p class="note">${txt(x.consignes)}</p>` : ""}
-                ${tableauCibles([["Séries", x.series], ["Rep", x.reps], ["Tempo", x.tempo], ["RIR", x.rir], ["Repos", x.repos]])}
+                ${tableauCibles([["Séries", x.series], [estEnTemps(x) ? "Temps (s)" : "Rep", x.reps], ["Tempo", x.tempo], ["RIR", x.rir], ["Repos", x.repos]])}
                 ${ex.video ? `<p class="lien-video" style="margin-top:6px">Vidéo : <a href="${txt(ex.video)}">${txt(ex.video)}</a></p>` : ""}
               </div>
             </div>`;

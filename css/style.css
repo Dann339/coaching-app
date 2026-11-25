@@ -415,3 +415,22 @@ label .champ-unite { margin-top: 4px; }
 /* Barre « Appliquer au programme / Enregistrer » : fixe en bas de la séance, après le cardio (ne suit plus le défilement) */
 .barre-collante, .mode-client .barre-collante { position: static; bottom: auto; margin-top: 4px; padding: 16px 0 8px; }
 @media (max-width: 760px) { .barre-collante { bottom: auto; } }
+
+/* ---------- Commentaires de séance ---------- */
+.commentaire-ex { margin-top: 8px; }
+tr.ligne-commentaire td { text-align: left; background: #f7f8f7; font-size: .9rem; color: var(--encre); border-bottom: 1px solid var(--ligne); }
+tr.ligne-commentaire p, tr.ligne-commentaire ul { margin: 2px 0; }
+tr.ligne-commentaire ul { padding-left: 18px; }
+.ligne2-ex { display: flex; gap: 8px; }
+.ligne2-ex select { width: auto; flex: none; }
+.ligne2-ex input { flex: 1; min-width: 0; }
+
+/* ---------- Photos d'exercice (bibliothèque) ---------- */
+.photos-ex { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.photo-bloc { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; border: 1px dashed var(--ligne); border-radius: 8px; padding: 10px; }
+.photo-bloc b { width: 100%; font-size: .9rem; }
+.photo-bloc .apercu-image { width: 100%; max-height: 160px; }
+.photo-bloc label.bouton { margin: 0; font-weight: 600; }
+.photo-bloc input[type=url] { margin-top: 4px; font-size: .85rem; }
+.photo-bloc .etat-envoi { width: 100%; }
+@media (max-width: 560px) { .photos-ex { grid-template-columns: 1fr; } }

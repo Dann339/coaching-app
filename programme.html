@@ -47,7 +47,7 @@
 
     // ---------- Copier / coller les paramètres d'un exercice ----------
     // Séries, reps, tempo, RIR et repos. Gardé pour cet onglet (même en changeant de client).
-    const CHAMPS_COPIES = ["series", "reps", "tempo", "rir", "repos"];
+    const CHAMPS_COPIES = ["series", "reps", "mode", "tempo", "rir", "repos"];
     let copie = null;
     try { copie = JSON.parse(sessionStorage.getItem("coachplan-copie") || "null"); } catch { copie = null; }
     function garderCopie(valeur) {
@@ -55,7 +55,7 @@
       try { valeur ? sessionStorage.setItem("coachplan-copie", JSON.stringify(valeur)) : sessionStorage.removeItem("coachplan-copie"); } catch { }
     }
     function resumeCopie(c) {
-      return [c.series && c.reps ? `${c.series} × ${c.reps}` : c.series || c.reps, c.tempo && `Tempo ${c.tempo}`,
+      return [c.series && c.reps ? `${c.series} × ${c.reps}${c.mode === "temps" ? " s" : ""}` : c.series || c.reps, c.tempo && `Tempo ${c.tempo}`,
         c.rir && `RIR ${c.rir}`, c.repos && `Repos ${c.repos}`].filter(Boolean).join(", ") || "valeurs vides";
     }
     function collerDans(x) { for (const champ of CHAMPS_COPIES) x[champ] = copie[champ] ?? ""; }
@@ -128,7 +128,7 @@
           <button class="petit danger" data-action="supprimer-entrainement">Supprimer</button>
         </div>
         <div class="ligne-ex ligne-titres"><span></span><span></span><span>Exercice</span>
-          <span>Séries</span><span>Reps</span><span>Tempo</span><span>RIR</span><span>Repos</span><span></span></div>
+          <span>Séries</span><span>Reps / temps</span><span>Tempo</span><span>RIR</span><span>Repos</span><span></span></div>
         ${w.exercices.map((x, j) => {
           const ex = trouverExercice(x.exerciceId);
           return `
@@ -141,10 +141,17 @@
               <input list="noms-exercices" value="${txt(ex ? ex.nom : "")}" data-champ="exercice" aria-label="Exercice" placeholder="Choisir un exercice">
               ${ex ? `<span style="font-size:.8rem">${pastille(ex.categorie)}</span>` : ""}
             </span>
-            ${[["series", "Séries", "3"], ["reps", "Reps", "10-12"], ["tempo", "Tempo", "3-1-1-0"], ["rir", "RIR", "1-2"], ["repos", "Repos", "90 s"]]
+            ${[["series", "Séries", "3"], ["reps", estEnTemps(x) ? "Temps (s)" : "Reps", estEnTemps(x) ? "45" : "10-12"],
+               ["tempo", "Tempo", "3-1-1-0"], ["rir", "RIR", "1-2"], ["repos", "Repos", "90 s"]]
               .map(([cle, nom, exemple]) => `<label class="mini"><span>${nom}</span>
                 <input value="${txt(x[cle] ?? "")}" data-champ="${cle}" aria-label="${nom}" placeholder="${exemple}"></label>`).join("")}
-            <input class="consignes-ex" value="${txt(x.consignes)}" data-champ="consignes" aria-label="Consignes" placeholder="Autres consignes : superset, position, machine…">
+            <span class="consignes-ex ligne2-ex">
+              <select data-champ="mode" aria-label="Mesurer en répétitions ou en temps" title="Mesurer en répétitions ou en temps">
+                <option value="reps" ${estEnTemps(x) ? "" : "selected"}>Reps</option>
+                <option value="temps" ${estEnTemps(x) ? "selected" : ""}>Temps</option>
+              </select>
+              <input value="${txt(x.consignes)}" data-champ="consignes" aria-label="Consignes" placeholder="Autres consignes : superset, position, machine…">
+            </span>
             <span class="boutons-ligne">
               <button class="icone" data-action="monter" aria-label="Monter">↑</button>
               <button class="icone" data-action="descendre" aria-label="Descendre">↓</button>
@@ -174,6 +181,10 @@
           if (!ex) { message("Exercice introuvable : ajoute-le dans la bibliothèque"); return; }
           x.exerciceId = ex.id;
           enregistrer(); afficher(); return;
+        }
+        if (champ === "mode") {
+          x.mode = e.target.value === "temps" ? "temps" : undefined;
+          enregistrer(); afficher(); message(x.mode ? "Mesuré en temps (secondes)" : "Mesuré en répétitions"); return;
         }
         if (["series", "reps", "tempo", "rir", "repos", "consignes"].includes(champ)) x[champ] = e.target.value;
       }

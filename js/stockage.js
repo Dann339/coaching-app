@@ -142,6 +142,23 @@ const Donnees = {
     }).finally(() => { envoisEnCours--; });
   },
 
+  // Envoie une photo dans Supabase Storage (dossier « photos ») et renvoie son adresse publique.
+  // La photo est d'abord réduite à 1200 px de côté max, en JPEG, pour rester légère.
+  async televerserPhoto(fichier) {
+    if (codeDuLien) throw new Error("Seul le coach peut ajouter des photos.");
+    const image = await createImageBitmap(fichier);
+    const echelle = Math.min(1, 1200 / Math.max(image.width, image.height));
+    const toile = document.createElement("canvas");
+    toile.width = Math.round(image.width * echelle);
+    toile.height = Math.round(image.height * echelle);
+    toile.getContext("2d").drawImage(image, 0, 0, toile.width, toile.height);
+    const blob = await new Promise(ok => toile.toBlob(ok, "image/jpeg", 0.85));
+    const chemin = `exercices/${this.nouvelId("photo")}.jpg`;
+    const { error } = await sb.storage.from("photos").upload(chemin, blob, { contentType: "image/jpeg" });
+    if (error) throw error;
+    return sb.storage.from("photos").getPublicUrl(chemin).data.publicUrl;
+  },
+
   async deconnecter() {
     await sb.auth.signOut();
     location.href = "connexion.html";

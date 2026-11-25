@@ -29,14 +29,32 @@
   <dialog id="fenetre">
     <form method="dialog" id="form-ex">
       <h2 id="titre-fenetre">Exercice</h2>
-      <img class="apercu-image" id="apercu-image" alt="" hidden>
       <div id="apercu-video"></div>
       <label>Nom <input name="nom" required></label>
       <div class="grille-2">
         <label>Catégorie <select name="categorie" id="select-categorie"></select></label>
         <label>Équipement <input name="equipement" placeholder="Haltères, machine, poulie…"></label>
       </div>
-      <label>Photo (lien) <input name="image" type="url" placeholder="https://…"></label>
+      <div class="photos-ex">
+        <div class="photo-bloc" data-photo="image">
+          <b>Photo de départ</b>
+          <img class="apercu-image" alt="" hidden>
+          <label class="bouton petit">Choisir une photo
+            <input type="file" accept="image/*" hidden data-fichier="image"></label>
+          <button type="button" class="petit danger" data-retirer="image">Retirer</button>
+          <span class="meta etat-envoi"></span>
+          <input name="image" type="url" placeholder="ou colle un lien https://…" aria-label="Lien de la photo de départ">
+        </div>
+        <div class="photo-bloc" data-photo="image2">
+          <b>Photo de fin (optionnel)</b>
+          <img class="apercu-image" alt="" hidden>
+          <label class="bouton petit">Choisir une photo
+            <input type="file" accept="image/*" hidden data-fichier="image2"></label>
+          <button type="button" class="petit danger" data-retirer="image2">Retirer</button>
+          <span class="meta etat-envoi"></span>
+          <input name="image2" type="url" placeholder="ou colle un lien https://…" aria-label="Lien de la photo de fin">
+        </div>
+      </div>
       <label>Vidéo (lien YouTube ou Vimeo) <input name="video" type="url" placeholder="https://youtu.be/…"></label>
       <label>Consignes de technique <textarea name="consignes" placeholder="Points clés à rappeler au client"></textarea></label>
       <div class="pied">
@@ -90,23 +108,58 @@
     }
 
     function apercu() {
-      const img = document.getElementById("apercu-image");
-      img.hidden = !form.image.value;
-      img.src = form.image.value;
+      for (const champ of ["image", "image2"]) {
+        const bloc = form.querySelector(`[data-photo="${champ}"]`);
+        const img = bloc.querySelector("img");
+        img.hidden = !form[champ].value;
+        if (form[champ].value) img.src = form[champ].value; else img.removeAttribute("src");
+        bloc.querySelector("[data-retirer]").hidden = !form[champ].value;
+      }
       document.getElementById("apercu-video").innerHTML = blocVideo(form.video.value);
     }
+
+    // ---------- Photos prises ou choisies sur l'appareil ----------
+    // La photo est réduite (1200 px max) puis envoyée dans Supabase Storage.
+    let envois = 0;
+    form.addEventListener("change", async e => {
+      const champ = e.target.dataset.fichier;
+      if (!champ || !e.target.files[0]) return;
+      const bloc = form.querySelector(`[data-photo="${champ}"]`);
+      const etat = bloc.querySelector(".etat-envoi");
+      const bouton = form.querySelector('button[type="submit"]');
+      envois++; bouton.disabled = true; etat.textContent = "Envoi de la photo…";
+      try {
+        form[champ].value = await Donnees.televerserPhoto(e.target.files[0]);
+        etat.textContent = "Photo ajoutée";
+        apercu();
+      } catch (err) {
+        console.error(err);
+        etat.textContent = "Échec de l'envoi : " + (err.message || err);
+      } finally {
+        e.target.value = "";
+        envois--; if (!envois) bouton.disabled = false;
+      }
+    });
+    form.addEventListener("click", e => {
+      const champ = e.target.dataset?.retirer;
+      if (!champ) return;
+      form[champ].value = "";
+      apercu();
+    });
 
     function ouvrir(ex) {
       enEdition = ex;
       form.reset();
       document.getElementById("titre-fenetre").textContent = ex ? ex.nom : "Nouvel exercice";
       document.getElementById("btn-supprimer").hidden = !ex;
-      if (ex) for (const champ of ["nom", "categorie", "equipement", "image", "video", "consignes"]) form[champ].value = ex[champ] || "";
+      form.querySelectorAll(".etat-envoi").forEach(el => el.textContent = "");
+      if (ex) for (const champ of ["nom", "categorie", "equipement", "image", "image2", "video", "consignes"]) form[champ].value = ex[champ] || "";
       apercu();
       fenetre.showModal();
     }
 
     form.image.addEventListener("input", apercu);
+    form.image2.addEventListener("input", apercu);
     form.video.addEventListener("change", apercu);
 
     form.addEventListener("submit", () => {

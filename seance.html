@@ -93,13 +93,18 @@
       return programmeDuClient(clientId)?.entrainements[selectEntrainement.value] || null;
     }
 
+    function serieVide() { return { poids: null, reps: null, temps: null }; }
+    function serieRemplie(s) { return s.poids !== null || s.reps !== null || s.temps !== null; }
+
     // Crée une ligne d'exercice du brouillon à partir d'un exercice du programme
     function ligneDepuisProgramme(x) {
       const nb = parseInt(x.series) || 3;
       return {
         exerciceId: x.exerciceId,
-        cible: { series: x.series, reps: x.reps, tempo: x.tempo, rir: x.rir, repos: x.repos, consignes: x.consignes },
-        series: Array.from({ length: nb }, () => ({ poids: null, reps: null })),
+        mode: x.mode || "reps",
+        cible: { series: x.series, reps: x.reps, mode: x.mode, tempo: x.tempo, rir: x.rir, repos: x.repos, consignes: x.consignes },
+        series: Array.from({ length: nb }, () => serieVide()),
+        commentaire: "",
       };
     }
 
@@ -128,7 +133,8 @@
         entrainementIndex: selectEntrainement.value,
         exercices: s.exercices.map(x => {
           const cible = w?.exercices.find(p => p.exerciceId === x.exerciceId) || {};
-          return { exerciceId: x.exerciceId, cible: { ...cible }, series: x.series.map(r => ({ ...r })) };
+          return { exerciceId: x.exerciceId, mode: x.mode || cible.mode || "reps", commentaire: x.commentaire || "",
+            cible: { ...cible }, series: x.series.map(r => ({ ...serieVide(), ...r })) };
         }),
         cardio: [...s.cardio.map(c => ({ ...c })), { activite: "", minutes: "" }],
         notes: s.notes || "",
@@ -139,14 +145,15 @@
       window.scrollTo({ top: 0 });
     }
 
-    function ligneSerie(i, k, serie, precedent) {
+    function ligneSerie(i, k, serie, precedent, mode) {
+      const enTemps = mode === "temps";
       return `<tr>
         <td>${k + 1}</td>
         <td><input type="number" inputmode="decimal" step="0.5" min="0" data-ex="${i}" data-serie="${k}" data-champ="poids"
              value="${serie.poids ?? ""}" aria-label="Poids série ${k + 1}"></td>
-        <td><input type="number" inputmode="numeric" step="1" min="0" data-ex="${i}" data-serie="${k}" data-champ="reps"
-             value="${serie.reps ?? ""}" aria-label="Reps série ${k + 1}"></td>
-        <td class="precedent">${precedent ? `${precedent.poids != null ? nombre(precedent.poids) : "—"} × ${precedent.reps ?? "—"}` : ""}</td>
+        <td><input type="number" inputmode="numeric" step="1" min="0" data-ex="${i}" data-serie="${k}" data-champ="${enTemps ? "temps" : "reps"}"
+             value="${(enTemps ? serie.temps : serie.reps) ?? ""}" aria-label="${enTemps ? "Temps en secondes" : "Reps"} série ${k + 1}"></td>
+        <td class="precedent">${serieTexte(precedent)}</td>
         <td><button class="icone" data-action="retirer-serie" data-ex="${i}" data-serie="${k}" aria-label="Retirer la série ${k + 1}">−</button></td>
       </tr>`;
     }
@@ -157,6 +164,7 @@
       const avant = dernieresSeries(ex.id);
       const c = x.cible || {};
       const ajoute = !c.series && !c.reps;
+      const enTemps = x.mode === "temps";
       return `
       <section class="carte ex-seance">
         <div class="ex-seance-tete">
@@ -164,7 +172,7 @@
           <div style="flex:1">
             <h3 style="margin:0">${i + 1}. ${txt(ex.nom)}</h3>
             ${ajoute ? `<p class="consigne">Ajouté pour cette séance</p>` : `
-              <div class="cible">${txt(c.series)} × ${txt(c.reps)}</div>
+              <div class="cible">${cibleTexte(c)}</div>
               ${detailsExercice(c)}
               ${c.consignes ? `<p class="consigne">${txt(c.consignes)}</p>` : ""}`}
           </div>
@@ -176,13 +184,20 @@
           </span>
         </div>
         <table class="series">
-          <thead><tr><th>Série</th><th>Poids (lb)</th><th>Reps</th><th>Dernière fois</th><th></th></tr></thead>
-          <tbody>${x.series.map((s, k) => ligneSerie(i, k, s, avant[k])).join("")}</tbody>
+          <thead><tr><th>Série</th><th>Poids (lb)</th><th>${enTemps ? "Temps (s)" : "Reps"}</th><th>Dernière fois</th><th></th></tr></thead>
+          <tbody>${x.series.map((s, k) => ligneSerie(i, k, s, avant[k], x.mode)).join("")}</tbody>
         </table>
-        <div class="actions" style="margin-top:6px">
+        <div class="actions" style="margin-top:6px;align-items:center">
+          <label class="champ-inline" style="font-weight:500">Mesurer en
+            <select data-mode data-ex="${i}" aria-label="Mesurer en répétitions ou en temps">
+              <option value="reps" ${enTemps ? "" : "selected"}>Répétitions</option>
+              <option value="temps" ${enTemps ? "selected" : ""}>Temps (secondes)</option>
+            </select></label>
           <button class="petit" data-action="ajouter-serie" data-ex="${i}">Ajouter une série</button>
           <button class="petit" data-action="remplacer" data-ex="${i}">Remplacer l'exercice</button>
         </div>
+        <input class="commentaire-ex" data-commentaire data-ex="${i}" value="${txt(x.commentaire || "")}"
+          placeholder="Commentaire sur cet exercice (sensation, douleur, charge…)" aria-label="Commentaire sur ${txt(ex.nom)}">
         <div class="remplacement" data-remplacer="${i}" hidden>
           <label style="margin:8px 0 0">Remplacer par
             <input list="noms-exercices" data-action-input="remplacer" data-ex="${i}" placeholder="Écris le nom d'un exercice"></label>
@@ -206,7 +221,7 @@
         ${enEdition ? `<p class="bandeau-demo">Tu modifies une séance déjà enregistrée.
           <button class="petit" data-action="annuler-modif">Annuler et commencer une nouvelle séance</button></p>` : ""}
         ${brouillon.exercices.map(carteExercice).join("") || `<div class="vide" style="margin-bottom:14px">${libre
-          ? "Séance libre : ajoute tes exercices ci-dessous. Pour chaque série, note le poids et les répétitions."
+          ? "Séance libre : ajoute tes exercices ci-dessous. Pour chaque série, note le poids et les répétitions (ou le temps)."
           : "Aucun exercice dans cette séance."}</div>`}
 
         <section class="carte ex-seance">
@@ -229,7 +244,8 @@
               <td><input type="number" inputmode="numeric" min="0" data-cardio="${n}" data-champ="minutes" value="${c.minutes ?? ""}" aria-label="Minutes ${n + 1}"></td></tr>`).join("")}
             </tbody>
           </table>
-          <label style="margin-top:12px">Notes de séance <textarea id="notes" placeholder="Énergie, douleur, ajustements…">${txt(brouillon.notes)}</textarea></label>
+          <label style="margin-top:12px">${enModeClient() ? "Commentaires sur ma séance (ton coach les verra)" : "Notes / commentaires de séance"}
+            <textarea id="notes" placeholder="Énergie, sommeil, douleur, ce qui était facile ou difficile…">${txt(brouillon.notes)}</textarea></label>
         </section>
 
         <div class="barre-collante">
@@ -253,11 +269,17 @@
         brouillon.exercices[t.dataset.ex].series[t.dataset.serie][t.dataset.champ] = v;
       } else if (t.dataset.cardio !== undefined) {
         brouillon.cardio[t.dataset.cardio][t.dataset.champ] = t.value;
+      } else if (t.dataset.commentaire !== undefined) {
+        brouillon.exercices[t.dataset.ex].commentaire = t.value;
       } else if (t.id === "notes") brouillon.notes = t.value;
     });
 
     zone.addEventListener("change", e => {
       const t = e.target;
+      if (t.dataset.mode !== undefined) {
+        brouillon.exercices[t.dataset.ex].mode = t.value;
+        afficher(); return;
+      }
       if (t.id === "ajout-programme" && t.value) {
         const p = programmeDuClient(clientId);
         const source = p.entrainements.flatMap(w => w.exercices).find(x => x.exerciceId === t.value);
@@ -268,7 +290,7 @@
         const ex = exerciceParNom(t.value);
         if (!ex) { message("Exercice introuvable dans la bibliothèque"); return; }
         if (t.id === "ajout-biblio") {
-          brouillon.exercices.push({ exerciceId: ex.id, cible: {}, series: [{ poids: null, reps: null }, { poids: null, reps: null }, { poids: null, reps: null }] });
+          brouillon.exercices.push({ exerciceId: ex.id, mode: "reps", commentaire: "", cible: {}, series: [serieVide(), serieVide(), serieVide()] });
           message("Exercice ajouté");
         } else {
           brouillon.exercices[t.dataset.ex].exerciceId = ex.id;
@@ -284,7 +306,7 @@
       const i = Number(b.dataset.ex);
       const liste = brouillon.exercices;
       switch (b.dataset.action) {
-        case "ajouter-serie": liste[i].series.push({ poids: null, reps: null }); break;
+        case "ajouter-serie": liste[i].series.push(serieVide()); break;
         case "retirer-serie": liste[i].series.splice(Number(b.dataset.serie), 1); break;
         case "retirer-exercice":
           if (!confirm("Retirer cet exercice de la séance ?")) return;
@@ -305,10 +327,16 @@
 
     function enregistrerSeance() {
       let w = entrainementChoisi();
-      const exercices = brouillon.exercices.map(x => ({
-        exerciceId: x.exerciceId,
-        series: x.series.filter(s => s.poids !== null || s.reps !== null),
-      })).filter(x => x.series.length);
+      const exercices = brouillon.exercices.map(x => {
+        const enTemps = x.mode === "temps";
+        const series = x.series.filter(serieRemplie).map(s => enTemps
+          ? { poids: s.poids, temps: s.temps }
+          : { poids: s.poids, reps: s.reps });
+        const ligne = { exerciceId: x.exerciceId, series };
+        if (enTemps) ligne.mode = "temps";
+        if ((x.commentaire || "").trim()) ligne.commentaire = x.commentaire.trim();
+        return ligne;
+      }).filter(x => x.series.length || x.commentaire);
       const cardio = brouillon.cardio
         .map(c => ({ activite: (c.activite || "").trim(), minutes: Number(c.minutes) || 0 }))
         .filter(c => c.activite || c.minutes);
@@ -334,7 +362,8 @@
         w.exercices = brouillon.exercices.map(x => {
           const existant = w.exercices.find(p => p.exerciceId === x.exerciceId);
           const c = x.cible || {};
-          return existant || { exerciceId: x.exerciceId, series: c.series || String(x.series.length || 3), reps: c.reps || "10-12",
+          return existant || { exerciceId: x.exerciceId, mode: x.mode === "temps" ? "temps" : undefined,
+            series: c.series || String(x.series.length || 3), reps: c.reps || (x.mode === "temps" ? "30" : "10-12"),
             tempo: c.tempo || "", rir: c.rir || "", repos: c.repos || "", consignes: c.consignes || "" };
         });
       }
@@ -357,6 +386,16 @@
       afficher();
     }
 
+    // Commentaires d'une séance (général + par exercice), affichés sous sa ligne
+    function commentairesSeance(s) {
+      const parExercice = s.exercices.filter(x => x.commentaire)
+        .map(x => `<li><b>${txt(trouverExercice(x.exerciceId)?.nom || "Exercice")} :</b> ${txt(x.commentaire)}</li>`);
+      if (!s.notes && !parExercice.length) return "";
+      return `<tr class="ligne-commentaire"><td colspan="6">
+        ${s.notes ? `<p><b>Commentaire :</b> ${txt(s.notes)}</p>` : ""}
+        ${parExercice.length ? `<ul>${parExercice.join("")}</ul>` : ""}</td></tr>`;
+    }
+
     function afficherRecentes() {
       const seances = seancesDuClient(clientId).slice(0, 10);
       document.getElementById("recentes").innerHTML = seances.length ? `
@@ -368,7 +407,8 @@
           <td style="white-space:nowrap">
             <button class="petit" data-copier="${s.id}" title="Nouvelle séance avec les mêmes exercices et valeurs">Copier</button>
             <button class="petit" data-modifier="${s.id}">Modifier</button>
-            <button class="icone danger" data-supprimer="${s.id}" aria-label="Supprimer la séance">✕</button></td></tr>`).join("")}
+            <button class="icone danger" data-supprimer="${s.id}" aria-label="Supprimer la séance">✕</button></td></tr>
+          ${commentairesSeance(s)}`).join("")}
         </tbody>` : `<tbody><tr><td class="meta">Aucune séance pour l'instant.</td></tr></tbody>`;
     }
     document.getElementById("recentes").onclick = e => {
@@ -384,7 +424,7 @@
     };
 
     selectEntrainement.onchange = () => {
-      const commence = brouillon?.exercices.some(x => x.series.some(s => s.poids !== null || s.reps !== null));
+      const commence = brouillon?.exercices.some(x => x.series.some(serieRemplie));
       if (commence && !confirm("Changer d'entraînement efface ce que tu as noté. Continuer ?")) {
         selectEntrainement.value = String(brouillon.entrainementIndex); return;
       }
